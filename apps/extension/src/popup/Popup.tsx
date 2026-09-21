@@ -3,6 +3,8 @@ import type { DownloadBinding, ExtensionSettings, PendingPromptItem } from "@ari
 import { formatBytes, formatSpeed, formatEta } from "../utils/format.js";
 import { useSystemTheme } from "../utils/useTheme.js";
 import { FileIcon } from "../utils/FileIcon.js";
+import { GithubIcon } from "../utils/GithubIcon.js";
+import { AUTHOR_CONFIG } from "../utils/author.js";
 import {
   Download,
   Settings,
@@ -718,13 +720,35 @@ export function Popup() {
             </>
           )}
         </div>
-        <button
-          onClick={openDashboard}
-          className="text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium hover:underline flex items-center space-x-0.5"
-        >
-          <span>Dashboard</span>
-          <ArrowRight className="w-3 h-3" />
-        </button>
+        <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 border-r border-zinc-200 dark:border-zinc-800 pr-2">
+            <a
+              href={AUTHOR_CONFIG.github}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`GitHub (${AUTHOR_CONFIG.name})`}
+              className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >
+              <GithubIcon className="w-3.5 h-3.5" />
+            </a>
+            <a
+              href={AUTHOR_CONFIG.portfolio}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Portfolio (${AUTHOR_CONFIG.name})`}
+              className="p-1 text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >
+              <Globe className="w-3.5 h-3.5" />
+            </a>
+          </div>
+          <button
+            onClick={openDashboard}
+            className="text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium hover:underline flex items-center space-x-0.5"
+          >
+            <span>Dashboard</span>
+            <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
       </footer>
 
       {/* Refresh Link Modal */}

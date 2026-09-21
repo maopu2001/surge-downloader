@@ -5,6 +5,7 @@ import type {
 } from "@aria2-browser/protocol";
 import { DEFAULT_SETTINGS } from "@aria2-browser/protocol";
 import { useSystemTheme } from "../utils/useTheme.js";
+import { Footer } from "../components/Footer.js";
 import {
   CheckCircle2,
   AlertCircle,
@@ -24,6 +25,7 @@ import {
   HelpCircle,
   Terminal,
   ExternalLink,
+  Download,
 } from "lucide-react";
 
 type SettingsTab = "diagnostics" | "interception" | "storage" | "engine";
@@ -153,12 +155,12 @@ export function Options() {
   const isFullyConnected = diagnostics.nativeHost?.ok && diagnostics.aria2c?.ok;
 
   return (
-    <div className="min-h-screen bg-[#fafafa] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 font-sans antialiased pb-16">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 font-sans antialiased flex flex-col">
       {/* Header */}
       <header className="sticky top-0 z-20 bg-white/80 dark:bg-[#121215]/80 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-6 py-3.5">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-600/10 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">
+            <div className="w-8 h-8 rounded-lg bg-blue-600/10 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0">
               <Sliders className="w-4 h-4" />
             </div>
             <div>
@@ -174,7 +176,7 @@ export function Options() {
 
           <div className="flex items-center space-x-2">
             {savedMessage && (
-              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center space-x-1 animate-fade-in">
+              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center space-x-1 animate-fade-in mr-1">
                 <Check className="w-3.5 h-3.5" />
                 <span>{savedMessage}</span>
               </span>
@@ -183,27 +185,42 @@ export function Options() {
             <button
               type="button"
               onClick={handleResetDefaults}
-              className="px-2.5 py-1.5 text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 border border-zinc-200 dark:border-zinc-800 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              className="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 border border-zinc-200 dark:border-zinc-800 rounded-md bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
             >
-              Reset Defaults
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Reset Defaults</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleSave()}
-              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-md shadow-xs transition-colors flex items-center space-x-1"
+              className="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-md shadow-xs transition-colors"
             >
               <Save className="w-3.5 h-3.5" />
               <span>Save Changes</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                chrome.tabs.create({
+                  url: chrome.runtime.getURL("dashboard.html"),
+                });
+              }}
+              className="inline-flex items-center space-x-1 px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-800 rounded-md text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              title="Open Dashboard"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Dashboard</span>
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-4xl mx-auto px-6 py-6">
+      <main className="max-w-6xl mx-auto px-6 py-6 flex-1 w-full space-y-5">
         {/* Navigation Tabs */}
-        <div className="inline-flex items-center space-x-1 bg-zinc-200/70 dark:bg-zinc-900/80 p-0.5 rounded-lg text-xs font-medium mb-6 self-start">
+        <div className="inline-flex items-center space-x-1 bg-zinc-200/70 dark:bg-zinc-900/80 p-0.5 rounded-lg text-xs font-medium mb-5 self-start">
           {[
             { id: "diagnostics", label: "Diagnostics & Setup", icon: Activity },
             { id: "interception", label: "Interception & Rules", icon: Layers },
@@ -960,6 +977,9 @@ export function Options() {
           )}
         </form>
       </main>
+
+      {/* Footer */}
+      <Footer maxWidth="max-w-6xl" />
     </div>
   );
 }

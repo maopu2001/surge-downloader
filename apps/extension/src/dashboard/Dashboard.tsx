@@ -3,6 +3,7 @@ import type { DownloadBinding } from "@aria2-browser/protocol";
 import { formatBytes, formatSpeed, formatEta } from "../utils/format.js";
 import { useSystemTheme } from "../utils/useTheme.js";
 import { FileIcon } from "../utils/FileIcon.js";
+import { Footer } from "../components/Footer.js";
 import {
   Download,
   Search,
@@ -263,12 +264,12 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafafa] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 font-sans antialiased">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 font-sans antialiased flex flex-col">
       {/* Top Navbar */}
-      <header className="sticky top-0 z-20 bg-white/80 dark:bg-[#121215]/80 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-6 py-3">
+      <header className="sticky top-0 z-20 bg-white/80 dark:bg-[#121215]/80 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-6 py-3.5">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-600/10 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">
+            <div className="w-8 h-8 rounded-lg bg-blue-600/10 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0">
               <Download className="w-4 h-4" />
             </div>
             <div>
@@ -353,7 +354,7 @@ export function Dashboard() {
       </header>
 
       {/* Main Container */}
-      <main className="max-w-6xl mx-auto px-6 py-6">
+      <main className="max-w-6xl mx-auto px-6 py-6 flex-1 w-full">
         {/* Controls Bar: Filter Tabs & Search */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-5">
           <div className="flex items-center space-x-1 bg-zinc-200/70 dark:bg-zinc-900/80 p-0.5 rounded-lg text-xs font-medium self-start">
@@ -696,6 +697,9 @@ export function Dashboard() {
           </div>
         )}
       </main>
+
+      {/* Footer */}
+      <Footer maxWidth="max-w-6xl" />
 
       {/* Refresh Download Link Dialog */}
       {refreshingLink && (
