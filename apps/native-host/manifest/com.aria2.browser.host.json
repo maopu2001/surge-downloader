@@ -1,0 +1,9 @@
+{
+  "name": "com.aria2.browser.host",
+  "description": "Aria2 Browser Native Messaging Host",
+  "path": "/Users/maopu/Documents/Codes/Projects/downloader/apps/native-host/bin/aria2-browser-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://afclijohfgakkgmodcdanimdnhppoljc/"
+  ]
+}

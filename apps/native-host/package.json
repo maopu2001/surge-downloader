@@ -1,0 +1,25 @@
+{
+  "name": "@aria2-browser/native-host",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "aria2-browser-host": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc && esbuild src/index.ts --bundle --platform=node --target=node26 --outfile=dist/bundle.cjs",
+    "build:sea": "node ../../scripts/build-sea.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aria2-browser/protocol": "workspace:*",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "esbuild": "^0.25.0",
+    "postject": "1.0.0-alpha.6",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  }
+}

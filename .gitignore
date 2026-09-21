@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Native host compiled binary & SEA artifacts
+apps/native-host/bin/aria2-browser-host
+apps/native-host/bin/aria2-browser-host.cmd
+apps/native-host/dist/sea-prep.blob
+
+# Test & coverage outputs
+coverage/
+.nyc_output/
+*.lcov
+
+# Vite & Vitest caches
+.vite/
+*.vite/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE & editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# Temporary downloads & aria2 files
+*.aria2
+*.part
+*.crdownload
+
+# Packaged extension files
+*.crx
+*.xpi
+*.zip

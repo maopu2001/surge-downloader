@@ -1,0 +1,27 @@
+{
+  "name": "aria2-browser-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=26.0.0 <27",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter=!aria2-browser-monorepo run build",
+    "build:native": "node scripts/build-sea.mjs",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "host:register": "node scripts/register-host.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
