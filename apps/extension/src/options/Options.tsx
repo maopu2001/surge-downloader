@@ -6,7 +6,7 @@ import type {
 import { DEFAULT_SETTINGS } from "@aria2-browser/protocol";
 import { useSystemTheme } from "../utils/useTheme.js";
 import {
-  CheckCircle,
+  CheckCircle2,
   AlertCircle,
   Activity,
   Save,
@@ -18,19 +18,22 @@ import {
   Trash2,
   Check,
   Copy,
-  PlayCircle,
   Sliders,
   FolderTree,
-  Network,
   Plus,
   HelpCircle,
+  Terminal,
+  ExternalLink,
 } from "lucide-react";
+
+type SettingsTab = "diagnostics" | "interception" | "storage" | "engine";
 
 export function Options() {
   useSystemTheme();
   const [settings, setSettings] = useState<ExtensionSettings>({
     ...DEFAULT_SETTINGS,
   });
+  const [activeTab, setActiveTab] = useState<SettingsTab>("diagnostics");
   const [loading, setLoading] = useState(true);
   const [savedMessage, setSavedMessage] = useState("");
   const [diagnostics, setDiagnostics] = useState<
@@ -91,8 +94,8 @@ export function Options() {
     runDiagnostics();
   }, []);
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
     const parseList = (str: string) =>
       str
@@ -113,7 +116,7 @@ export function Options() {
       (res) => {
         if (res?.success) {
           setSettings(res.data);
-          setSavedMessage("Settings saved successfully!");
+          setSavedMessage("Settings saved successfully");
           setTimeout(() => setSavedMessage(""), 3000);
         }
       },
@@ -121,7 +124,7 @@ export function Options() {
   };
 
   const handleResetDefaults = () => {
-    if (confirm("Reset all settings to default values?")) {
+    if (confirm("Reset all preferences to default values?")) {
       chrome.runtime.sendMessage(
         { type: "UPDATE_SETTINGS", payload: DEFAULT_SETTINGS },
         (res) => {
@@ -131,7 +134,7 @@ export function Options() {
             setExcExtStr(res.data.excludedExtensions.join(", "));
             setIncDomStr(res.data.includedDomains.join(", "));
             setExcDomStr(res.data.excludedDomains.join(", "));
-            setSavedMessage("Reset to default settings.");
+            setSavedMessage("Reset to defaults");
             setTimeout(() => setSavedMessage(""), 3000);
           }
         },
@@ -141,821 +144,822 @@ export function Options() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-slate-950">
-        <Activity className="w-8 h-8 animate-spin" />
+      <div className="flex items-center justify-center min-h-screen text-zinc-400 bg-[#fafafa] dark:bg-[#09090b]">
+        <Activity className="w-6 h-6 animate-spin" />
       </div>
     );
   }
 
+  const isFullyConnected = diagnostics.nativeHost?.ok && diagnostics.aria2c?.ok;
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans py-10 px-6 transition-colors duration-200">
-      <div className="max-w-4xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3.5">
-            <img
-              src="/icons/icon-48.png"
-              alt="Surge"
-              className="w-10 h-10 rounded-xl shadow-sm"
-            />
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 font-sans antialiased pb-16">
+      {/* Header */}
+      <header className="sticky top-0 z-20 bg-white/80 dark:bg-[#121215]/80 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-6 py-3.5">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-600/10 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">
+              <Sliders className="w-4 h-4" />
+            </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-                Surge Settings
+              <h1 className="text-sm font-bold tracking-tight">
+                Surge Preferences
               </h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                Configure interception rules, download directories, and system
-                diagnostics.
+              <p className="text-[11px] text-zinc-500">
+                Configure interception routing, aria2c engine defaults, and
+                connection health
               </p>
             </div>
           </div>
-          {savedMessage && (
-            <div className="px-3 py-1.5 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-xs font-semibold rounded-lg shadow-sm border border-emerald-300 dark:border-emerald-800 animate-fade-in">
-              {savedMessage}
-            </div>
-          )}
-        </div>
 
-        {/* Diagnostics & Health Check Panel */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Activity className="w-5 h-5 text-sky-500" />
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                System Diagnostics & Health Check
-              </h2>
-            </div>
+          <div className="flex items-center space-x-2">
+            {savedMessage && (
+              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center space-x-1 animate-fade-in">
+                <Check className="w-3.5 h-3.5" />
+                <span>{savedMessage}</span>
+              </span>
+            )}
+
             <button
               type="button"
-              onClick={runDiagnostics}
-              disabled={testingHealth}
-              className="px-3 py-1.5 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30 rounded-lg border border-sky-200 dark:border-sky-800 transition-colors"
+              onClick={handleResetDefaults}
+              className="px-2.5 py-1.5 text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 border border-zinc-200 dark:border-zinc-800 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
-              {testingHealth ? "Testing..." : "Re-test Connection"}
+              Reset Defaults
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSave()}
+              className="px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-md shadow-xs transition-colors flex items-center space-x-1"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Save Changes</span>
             </button>
           </div>
+        </div>
+      </header>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="w-4 h-4 text-emerald-500" />
-                <span className="font-semibold text-slate-700 dark:text-slate-200">
-                  Extension Service Worker
-                </span>
-              </div>
-              <p className="text-slate-500 dark:text-slate-400 mt-1">
-                Manifest V3 Active
-              </p>
-            </div>
+      {/* Main Content Area */}
+      <main className="max-w-4xl mx-auto px-6 py-6">
+        {/* Navigation Tabs */}
+        <div className="inline-flex items-center space-x-1 bg-zinc-200/70 dark:bg-zinc-900/80 p-0.5 rounded-lg text-xs font-medium mb-6 self-start">
+          {[
+            { id: "diagnostics", label: "Diagnostics & Setup", icon: Activity },
+            { id: "interception", label: "Interception & Rules", icon: Layers },
+            { id: "storage", label: "Storage & Folders", icon: Folder },
+            { id: "engine", label: "Engine & Network", icon: Sliders },
+          ].map((tab) => {
+            const active = activeTab === tab.id;
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as SettingsTab)}
+                className={`px-3 py-1.5 rounded-md transition-all flex items-center space-x-1.5 ${
+                  active
+                    ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs font-semibold"
+                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
 
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl">
-              <div className="flex items-center space-x-2">
-                {diagnostics.nativeHost?.ok ? (
-                  <CheckCircle className="w-4 h-4 text-emerald-500" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-rose-500" />
-                )}
-                <span className="font-semibold text-slate-700 dark:text-slate-200">
-                  Native Messaging Host
-                </span>
-              </div>
-              <p className="text-slate-500 dark:text-slate-400 mt-1">
-                {diagnostics.nativeHost?.message || "Not tested"}
-              </p>
-            </div>
-
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl">
-              <div className="flex items-center space-x-2">
-                {diagnostics.aria2c?.ok ? (
-                  <CheckCircle className="w-4 h-4 text-emerald-500" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-amber-500" />
-                )}
-                <span className="font-semibold text-slate-700 dark:text-slate-200">
-                  aria2c Daemon / RPC
-                </span>
-              </div>
-              <p className="text-slate-500 dark:text-slate-400 mt-1">
-                {diagnostics.aria2c?.message || "Waiting for native host"}
-              </p>
-            </div>
-          </div>
-
-          {/* Setup / Installation Guide if disconnected */}
-          {(!diagnostics.aria2c?.ok || !diagnostics.nativeHost?.ok) && (
-            <div className="bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/80 rounded-2xl p-5 space-y-4 shadow-sm animate-fade-in">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
-                  <HelpCircle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Setup Required: Install aria2c & Register Native Host
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Surge requires{" "}
-                    <code className="font-mono font-semibold">aria2c</code> on
-                    your system to download files. Follow the steps below for
-                    your OS:
-                  </p>
-                </div>
-              </div>
-
-              {/* OS Tabs */}
-              <div className="space-y-3 pt-1">
-                <div className="flex flex-wrap gap-1.5 border-b border-amber-200 dark:border-amber-900/60 pb-2">
-                  {[
-                    { id: "macos", label: "macOS (Homebrew)" },
-                    { id: "windows", label: "Windows (winget)" },
-                    { id: "ubuntu", label: "Ubuntu / Debian" },
-                    { id: "fedora", label: "Fedora / RHEL" },
-                    { id: "arch", label: "Arch Linux" },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setSelectedOS(tab.id)}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                        selectedOS === tab.id
-                          ? "bg-amber-500 text-white shadow-sm"
-                          : "bg-white/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-amber-100 dark:hover:bg-slate-700 border border-amber-200 dark:border-slate-700"
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Step 1: Install command */}
-                <div className="space-y-1.5">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
-                    <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-bold">
-                      1
-                    </span>
-                    <span>Install aria2c via Terminal / PowerShell:</span>
-                  </span>
-                  <div className="flex items-center justify-between bg-slate-900 text-slate-100 p-2.5 rounded-xl font-mono text-xs shadow-inner">
-                    <span className="select-all">
-                      {selectedOS === "macos" && "brew install aria2"}
-                      {selectedOS === "windows" && "winget install aria2.aria2"}
-                      {selectedOS === "ubuntu" &&
-                        "sudo apt update && sudo apt install aria2"}
-                      {selectedOS === "fedora" && "sudo dnf install aria2"}
-                      {selectedOS === "arch" && "sudo pacman -S aria2"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cmd =
-                          selectedOS === "macos"
-                            ? "brew install aria2"
-                            : selectedOS === "windows"
-                              ? "winget install aria2.aria2"
-                              : selectedOS === "ubuntu"
-                                ? "sudo apt update && sudo apt install aria2"
-                                : selectedOS === "fedora"
-                                  ? "sudo dnf install aria2"
-                                  : "sudo pacman -S aria2";
-                        copyToClipboard(cmd, "install-cmd");
-                      }}
-                      className="ml-3 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors flex-shrink-0"
-                    >
-                      {copiedKey === "install-cmd" ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-emerald-400">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Command</span>
-                        </>
-                      )}
-                    </button>
+        <form onSubmit={handleSave} className="space-y-5">
+          {/* TAB 1: DIAGNOSTICS & SETUP */}
+          {activeTab === "diagnostics" && (
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-[#121215] border border-zinc-200/70 dark:border-zinc-800/80 rounded-xl p-5 shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">
+                      System Health & Status
+                    </h2>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Verify communication between Chromium extension, Native
+                      Host binary, and aria2c RPC.
+                    </p>
                   </div>
-                </div>
 
-                {/* Step 2: Register native host */}
-                <div className="space-y-1.5 pt-1">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
-                    <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-bold">
-                      2
-                    </span>
-                    <span>
-                      Register Native Messaging Host manifest with Chromium:
-                    </span>
-                  </span>
-                  <div className="flex items-center justify-between bg-slate-900 text-slate-100 p-2.5 rounded-xl font-mono text-xs shadow-inner">
-                    <span className="select-all">
-                      {selectedOS === "windows"
-                        ? ".\\install-host.bat"
-                        : "./install-host.sh"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cmd =
-                          selectedOS === "windows"
-                            ? ".\\install-host.bat"
-                            : "./install-host.sh";
-                        copyToClipboard(cmd, "register-cmd");
-                      }}
-                      className="ml-3 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-lg text-[11px] font-semibold flex items-center space-x-1 transition-colors flex-shrink-0"
-                    >
-                      {copiedKey === "register-cmd" ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-emerald-400">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Step 3: Re-test */}
-                <div className="pt-2 flex items-center justify-end">
                   <button
                     type="button"
                     onClick={runDiagnostics}
                     disabled={testingHealth}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-sm transition-colors flex items-center space-x-1.5"
+                    className="px-2.5 py-1 text-xs font-medium text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
                   >
-                    <Activity className="w-4 h-4" />
-                    <span>
-                      {testingHealth
-                        ? "Testing Connection..."
-                        : "Check Status (Re-test)"}
-                    </span>
+                    {testingHealth ? "Testing..." : "Re-test Connection"}
                   </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  {/* Extension Worker */}
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/60 dark:border-zinc-800/60 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                      <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                        Extension Worker
+                      </span>
+                    </div>
+                    <p className="text-zinc-500 text-[11px] mt-1">
+                      Manifest V3 Active
+                    </p>
+                  </div>
+
+                  {/* Native Host */}
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/60 dark:border-zinc-800/60 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      {diagnostics.nativeHost?.ok ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0" />
+                      )}
+                      <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                        Native Host
+                      </span>
+                    </div>
+                    <p
+                      className="text-zinc-500 text-[11px] mt-1 truncate"
+                      title={diagnostics.nativeHost?.message}
+                    >
+                      {diagnostics.nativeHost?.message || "Not checked"}
+                    </p>
+                  </div>
+
+                  {/* aria2c daemon */}
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/60 dark:border-zinc-800/60 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      {diagnostics.aria2c?.ok ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                      )}
+                      <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                        aria2c RPC Daemon
+                      </span>
+                    </div>
+                    <p
+                      className="text-zinc-500 text-[11px] mt-1 truncate"
+                      title={diagnostics.aria2c?.message}
+                    >
+                      {diagnostics.aria2c?.message || "Waiting for host"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Setup Guide */}
+              {!isFullyConnected && (
+                <div className="bg-white dark:bg-[#121215] border border-amber-500/30 rounded-xl p-5 shadow-xs space-y-3">
+                  <div className="flex items-center space-x-2 text-amber-600 dark:text-amber-400">
+                    <HelpCircle className="w-4 h-4 flex-shrink-0" />
+                    <h3 className="font-semibold text-xs">
+                      Setup Instructions (Install aria2c & Native Host)
+                    </h3>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                    {[
+                      { id: "macos", label: "macOS" },
+                      { id: "windows", label: "Windows" },
+                      { id: "ubuntu", label: "Ubuntu / Debian" },
+                      { id: "fedora", label: "Fedora" },
+                      { id: "arch", label: "Arch Linux" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setSelectedOS(tab.id)}
+                        className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                          selectedOS === tab.id
+                            ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Step 1 */}
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Step 1: Install aria2c
+                    </span>
+                    <div className="flex items-center justify-between bg-zinc-900 text-zinc-200 p-2 rounded-lg font-mono text-xs">
+                      <span className="select-all truncate">
+                        {selectedOS === "macos" && "brew install aria2"}
+                        {selectedOS === "windows" &&
+                          "winget install aria2.aria2"}
+                        {selectedOS === "ubuntu" &&
+                          "sudo apt update && sudo apt install aria2"}
+                        {selectedOS === "fedora" && "sudo dnf install aria2"}
+                        {selectedOS === "arch" && "sudo pacman -S aria2"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cmd =
+                            selectedOS === "macos"
+                              ? "brew install aria2"
+                              : selectedOS === "windows"
+                                ? "winget install aria2.aria2"
+                                : selectedOS === "ubuntu"
+                                  ? "sudo apt update && sudo apt install aria2"
+                                  : selectedOS === "fedora"
+                                    ? "sudo dnf install aria2"
+                                    : "sudo pacman -S aria2";
+                          copyToClipboard(cmd, "install-cmd");
+                        }}
+                        className="ml-2 px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded text-[10px] font-sans flex items-center space-x-1"
+                      >
+                        {copiedKey === "install-cmd" ? (
+                          <Check className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                        <span>
+                          {copiedKey === "install-cmd" ? "Copied" : "Copy"}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Step 2: Register Native Host with Chromium
+                    </span>
+                    <div className="flex items-center justify-between bg-zinc-900 text-zinc-200 p-2 rounded-lg font-mono text-xs">
+                      <span className="select-all truncate">
+                        {selectedOS === "windows"
+                          ? ".\\install-host.bat"
+                          : "./install-host.sh"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cmd =
+                            selectedOS === "windows"
+                              ? ".\\install-host.bat"
+                              : "./install-host.sh";
+                          copyToClipboard(cmd, "register-cmd");
+                        }}
+                        className="ml-2 px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded text-[10px] font-sans flex items-center space-x-1"
+                      >
+                        {copiedKey === "register-cmd" ? (
+                          <Check className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                        <span>
+                          {copiedKey === "register-cmd" ? "Copied" : "Copy"}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 2: INTERCEPTION & RULES */}
+          {activeTab === "interception" && (
+            <div className="space-y-4">
+              {/* Interception Mode */}
+              <div className="bg-white dark:bg-[#121215] border border-zinc-200/70 dark:border-zinc-800/80 rounded-xl p-5 shadow-xs space-y-3">
+                <h2 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">
+                  Interception Mode
+                </h2>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {(
+                    [
+                      {
+                        id: "auto",
+                        name: "Automatic (AUTO)",
+                        desc: "Immediately offload matching downloads to aria2c.",
+                      },
+                      {
+                        id: "ask",
+                        name: "Prompt (ASK)",
+                        desc: "Pause browser download and prompt for confirmation.",
+                      },
+                      {
+                        id: "off",
+                        name: "Disabled (OFF)",
+                        desc: "Do not intercept; proceed through Chromium engine.",
+                      },
+                    ] as const
+                  ).map((mode) => {
+                    const selected = settings.mode === mode.id;
+                    return (
+                      <label
+                        key={mode.id}
+                        className={`p-3.5 border rounded-lg cursor-pointer transition-all ${
+                          selected
+                            ? "border-blue-500 bg-blue-50/20 dark:bg-blue-950/20 dark:border-blue-500"
+                            : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="radio"
+                            name="mode"
+                            value={mode.id}
+                            checked={selected}
+                            onChange={() =>
+                              setSettings({
+                                ...settings,
+                                mode: mode.id as InterceptionMode,
+                              })
+                            }
+                            className="text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-xs font-semibold text-zinc-900 dark:text-white">
+                            {mode.name}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 mt-1.5 leading-snug">
+                          {mode.desc}
+                        </p>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800/80">
+                  <label className="flex items-center space-x-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.interceptAll}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          interceptAll: e.target.checked,
+                        })
+                      }
+                      className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                    />
+                    <div>
+                      <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200">
+                        Catch-All Interception (Intercept All Files)
+                      </span>
+                      <p className="text-[11px] text-zinc-500">
+                        Offloads every file download regardless of extension,
+                        except explicit exclusions.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Filters: Extensions & Domains */}
+              <div className="bg-white dark:bg-[#121215] border border-zinc-200/70 dark:border-zinc-800/80 rounded-xl p-5 shadow-xs space-y-4">
+                <h2 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">
+                  Extension & Domain Filters
+                </h2>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                      Included File Extensions
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={incExtStr}
+                      onChange={(e) => setIncExtStr(e.target.value)}
+                      placeholder="iso, zip, tar.gz, mp4, 7z, dmg, exe..."
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <p className="text-[10px] text-zinc-400 mt-1">
+                      Comma-separated list of extensions.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                      Excluded File Extensions
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={excExtStr}
+                      onChange={(e) => setExcExtStr(e.target.value)}
+                      placeholder="crx, pdf..."
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <p className="text-[10px] text-zinc-400 mt-1">
+                      Never offload files with these extensions.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                      Included Domains
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={incDomStr}
+                      onChange={(e) => setIncDomStr(e.target.value)}
+                      placeholder="releases.ubuntu.com, downloads.example.com..."
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <p className="text-[10px] text-zinc-400 mt-1">
+                      Always intercept from these domains.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                      Excluded Domains
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={excDomStr}
+                      onChange={(e) => setExcDomStr(e.target.value)}
+                      placeholder="localhost, 127.0.0.1, internal.domain..."
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <p className="text-[10px] text-zinc-400 mt-1">
+                      Never intercept from these domains.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           )}
-        </div>
 
-        {/* Configuration Form */}
-        <form onSubmit={handleSave} className="space-y-6">
-          {/* Mode Selection */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center space-x-2">
-              <Layers className="w-5 h-5 text-sky-500" />
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                Interception Mode
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {(
-                [
-                  {
-                    id: "auto",
-                    name: "Automatic (AUTO)",
-                    desc: "Instantly offload matching downloads to aria2c. Fall back to browser on error.",
-                  },
-                  {
-                    id: "ask",
-                    name: "Prompt (ASK)",
-                    desc: "Pause browser download and ask user: aria2c or browser for each match.",
-                  },
-                  {
-                    id: "off",
-                    name: "Disabled (OFF)",
-                    desc: "Never intercept. All downloads proceed through standard Chromium engine.",
-                  },
-                ] as const
-              ).map((mode) => (
-                <label
-                  key={mode.id}
-                  className={`p-4 border rounded-xl cursor-pointer transition-all ${
-                    settings.mode === mode.id
-                      ? "border-sky-500 bg-sky-50/50 dark:bg-sky-950/40 dark:border-sky-500 shadow-sm"
-                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900"
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      name="mode"
-                      value={mode.id}
-                      checked={settings.mode === mode.id}
-                      onChange={() =>
-                        setSettings({
-                          ...settings,
-                          mode: mode.id as InterceptionMode,
-                        })
-                      }
-                      className="text-sky-600 focus:ring-sky-500"
-                    />
-                    <span className="text-sm font-bold text-slate-900 dark:text-white">
-                      {mode.name}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                    {mode.desc}
-                  </p>
-                </label>
-              ))}
-            </div>
-
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-              <label className="flex items-center space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.interceptAll}
-                  onChange={(e) =>
-                    setSettings({ ...settings, interceptAll: e.target.checked })
-                  }
-                  className="rounded text-sky-600 focus:ring-sky-500 w-4 h-4"
-                />
-                <div>
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Intercept All File Downloads (Catch-All)
-                  </span>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    When enabled, offloads every file download without requiring
-                    matching file extensions (except excluded
-                    domains/extensions).
-                  </p>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Rules: Extensions & Domains */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center space-x-2">
-              <Globe className="w-5 h-5 text-sky-500" />
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                Interception Rules & Filters
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Target File Extensions (Included)
-                </label>
-                <textarea
-                  rows={3}
-                  value={incExtStr}
-                  onChange={(e) => setIncExtStr(e.target.value)}
-                  placeholder="iso, zip, tar.gz, mp4, 7z..."
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-slate-900 dark:text-slate-100"
-                />
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  Comma-separated list of extensions.
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Excluded File Extensions
-                </label>
-                <textarea
-                  rows={3}
-                  value={excExtStr}
-                  onChange={(e) => setExcExtStr(e.target.value)}
-                  placeholder="crx, pdf..."
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-slate-900 dark:text-slate-100"
-                />
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  Excluded extensions bypass aria2 even if matching inclusion
-                  rules.
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Target Included Domains
-                </label>
-                <textarea
-                  rows={2}
-                  value={incDomStr}
-                  onChange={(e) => setIncDomStr(e.target.value)}
-                  placeholder="downloads.example.org, releases.ubuntu.com..."
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-slate-900 dark:text-slate-100"
-                />
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  Always intercept downloads from these domains.
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Excluded Domains
-                </label>
-                <textarea
-                  rows={2}
-                  value={excDomStr}
-                  onChange={(e) => setExcDomStr(e.target.value)}
-                  placeholder="*.internal.net, localhost..."
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-slate-900 dark:text-slate-100"
-                />
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  Never intercept downloads from these domains.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Storage Directory */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center space-x-2">
-              <Folder className="w-5 h-5 text-sky-500" />
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                Output Directory
-              </h2>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Custom Download Directory (Optional)
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    chrome.runtime.sendMessage(
-                      {
-                        type: "SELECT_FOLDER",
-                        payload: {
-                          defaultPath:
-                            settings.downloadDirectory.trim() || undefined,
-                        },
-                      },
-                      (res) => {
-                        if (
-                          res?.success &&
-                          res.data?.path &&
-                          !res.data.canceled
-                        ) {
-                          setSettings((prev) => ({
-                            ...prev,
-                            downloadDirectory: res.data.path,
-                          }));
-                        }
-                      },
-                    );
-                  }}
-                  className="px-2.5 py-1 text-xs font-semibold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900 border border-sky-200 dark:border-sky-800 rounded-lg transition-colors flex items-center space-x-1"
-                >
-                  <Folder className="w-3.5 h-3.5" />
-                  <span>Choose Folder (OS)</span>
-                </button>
-              </div>
-              <input
-                type="text"
-                value={settings.downloadDirectory}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    downloadDirectory: e.target.value,
-                  })
-                }
-                placeholder="Leave blank to use OS default ~/Downloads"
-                className="w-full text-xs p-2.5 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 text-slate-900 dark:text-slate-100"
-              />
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                Must be an absolute path on your filesystem where aria2c has
-                write permissions.
-              </p>
-            </div>
-          </div>
-
-          {/* Security & Header Forwarding */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center space-x-2">
-              <Shield className="w-5 h-5 text-sky-500" />
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                Security & Authentication Forwarding
-              </h2>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <label className="flex items-center space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.forwardCookies}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      forwardCookies: e.target.checked,
-                    })
-                  }
-                  className="rounded text-sky-600 focus:ring-sky-500 w-4 h-4"
-                />
-                <div>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    Forward Domain-Scoped Cookies
-                  </span>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                    Sends strictly the cookies matching the exact download URL
-                    to aria2c for authenticated downloads.
-                  </p>
-                </div>
-              </label>
-
-              <label className="flex items-center space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.forwardUserAgent}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      forwardUserAgent: e.target.checked,
-                    })
-                  }
-                  className="rounded text-sky-600 focus:ring-sky-500 w-4 h-4"
-                />
-                <div>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    Forward Browser User-Agent
-                  </span>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                    Imitates browser navigation headers so CDN download servers
-                    don't block aria2c.
-                  </p>
-                </div>
-              </label>
-
-              <label className="flex items-center space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.forwardReferer}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      forwardReferer: e.target.checked,
-                    })
-                  }
-                  className="rounded text-sky-600 focus:ring-sky-500 w-4 h-4"
-                />
-                <div>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    Forward Referer Header
-                  </span>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                    Passes the initiating page URL to satisfy anti-hotlinking
-                    protections.
-                  </p>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Aria2 Engine & Connection Defaults */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center space-x-2">
-              <Sliders className="w-5 h-5 text-sky-500" />
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                Aria2 Connection & Engine Defaults
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Default Split / Connections per File (1–16)
-                </label>
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="range"
-                    min="1"
-                    max="16"
-                    value={settings.defaultSplit}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      setSettings({
-                        ...settings,
-                        defaultSplit: val,
-                        defaultMaxConnectionPerServer: val,
-                      });
-                    }}
-                    className="flex-1 accent-sky-500"
-                  />
-                  <span className="w-8 font-mono font-bold text-slate-800 dark:text-slate-200 text-sm">
-                    {settings.defaultSplit}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  Controls aria2 `split` and `max-connection-per-server`.
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Min Split Size
-                </label>
-                <input
-                  type="text"
-                  value={settings.defaultMinSplitSize}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      defaultMinSplitSize: e.target.value,
-                    })
-                  }
-                  placeholder="e.g. 10M, 20M"
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-slate-100"
-                />
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  Aria2 only splits file when size exceeds this value (e.g.
-                  10M).
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Max Download Limit (Speed Limit)
-                </label>
-                <input
-                  type="text"
-                  value={settings.defaultMaxDownloadLimit}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      defaultMaxDownloadLimit: e.target.value,
-                    })
-                  }
-                  placeholder="0 for unlimited, or e.g. 2M, 500K"
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-slate-100"
-                />
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  Aria2 `max-download-limit`. Set 0 for unlimited speed.
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Default Proxy Server (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={settings.defaultProxy}
-                  onChange={(e) =>
-                    setSettings({ ...settings, defaultProxy: e.target.value })
-                  }
-                  placeholder="e.g. socks5://127.0.0.1:1080 or http://127.0.0.1:8080"
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-slate-100"
-                />
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  Supports http, https, and socks5 proxy schemes.
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2 text-xs">
-              <label className="flex items-center space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.defaultCheckCertificate}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      defaultCheckCertificate: e.target.checked,
-                    })
-                  }
-                  className="rounded text-sky-600 focus:ring-sky-500 w-4 h-4"
-                />
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  Verify SSL/TLS Certificates (`check-certificate`)
-                </span>
-              </label>
-
-              <label className="flex items-center space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.autoFileRenaming}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      autoFileRenaming: e.target.checked,
-                    })
-                  }
-                  className="rounded text-sky-600 focus:ring-sky-500 w-4 h-4"
-                />
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  Auto-Rename Duplicates (`auto-file-renaming`)
-                </span>
-              </label>
-            </div>
-          </div>
-
-          {/* Smart Sub-Directory Routing */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <FolderTree className="w-5 h-5 text-sky-500" />
-                <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                  Smart Sub-Folder Routing
+          {/* TAB 3: STORAGE & FOLDERS */}
+          {activeTab === "storage" && (
+            <div className="space-y-4">
+              {/* Default download directory */}
+              <div className="bg-white dark:bg-[#121215] border border-zinc-200/70 dark:border-zinc-800/80 rounded-xl p-5 shadow-xs space-y-3">
+                <h2 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">
+                  Default Save Directory
                 </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSettings({
-                    ...settings,
-                    subDirectoryRouting: [
-                      ...(settings.subDirectoryRouting || []),
-                      { pattern: "", subDirectory: "" },
-                    ],
-                  });
-                }}
-                className="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30 rounded-lg border border-sky-200 dark:border-sky-800 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Routing Rule</span>
-              </button>
-            </div>
 
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Automatically route downloaded files into sub-directories based on
-              extensions or MIME patterns.
-            </p>
-
-            <div className="space-y-2 text-xs">
-              {(settings.subDirectoryRouting || []).map((route, idx) => (
-                <div key={idx} className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2">
                   <input
                     type="text"
-                    value={route.pattern}
-                    onChange={(e) => {
-                      const updated = [...(settings.subDirectoryRouting || [])];
-                      updated[idx] = {
-                        ...updated[idx],
-                        pattern: e.target.value,
-                      };
+                    value={settings.downloadDirectory}
+                    onChange={(e) =>
                       setSettings({
                         ...settings,
-                        subDirectoryRouting: updated,
-                      });
-                    }}
-                    placeholder="Pattern (e.g. iso,dmg or video/*)"
-                    className="flex-1 p-2 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-slate-100"
-                  />
-                  <span className="text-slate-400 font-mono">→</span>
-                  <input
-                    type="text"
-                    value={route.subDirectory}
-                    onChange={(e) => {
-                      const updated = [...(settings.subDirectoryRouting || [])];
-                      updated[idx] = {
-                        ...updated[idx],
-                        subDirectory: e.target.value,
-                      };
-                      setSettings({
-                        ...settings,
-                        subDirectoryRouting: updated,
-                      });
-                    }}
-                    placeholder="Sub-folder (e.g. ISOs)"
-                    className="w-48 p-2 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-slate-100"
+                        downloadDirectory: e.target.value,
+                      })
+                    }
+                    placeholder="Leave empty for OS default (~/Downloads)"
+                    className="flex-1 p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                   <button
                     type="button"
                     onClick={() => {
-                      const updated = (
-                        settings.subDirectoryRouting || []
-                      ).filter((_, i) => i !== idx);
-                      setSettings({
-                        ...settings,
-                        subDirectoryRouting: updated,
-                      });
+                      chrome.runtime.sendMessage(
+                        {
+                          type: "SELECT_FOLDER",
+                          payload: {
+                            defaultPath:
+                              settings.downloadDirectory.trim() || undefined,
+                          },
+                        },
+                        (res) => {
+                          if (
+                            res?.success &&
+                            res.data?.path &&
+                            !res.data.canceled
+                          ) {
+                            setSettings((prev) => ({
+                              ...prev,
+                              downloadDirectory: res.data.path,
+                            }));
+                          }
+                        },
+                      );
                     }}
-                    className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors"
+                    className="px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center space-x-1 flex-shrink-0"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Folder className="w-3.5 h-3.5" />
+                    <span>Browse...</span>
                   </button>
                 </div>
-              ))}
+                <p className="text-[11px] text-zinc-400">
+                  Absolute filesystem path where aria2c has read/write
+                  permissions.
+                </p>
+              </div>
+
+              {/* Smart Sub-directory Routing */}
+              <div className="bg-white dark:bg-[#121215] border border-zinc-200/70 dark:border-zinc-800/80 rounded-xl p-5 shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">
+                      Smart Sub-Folder Routing
+                    </h2>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      Automatically categorize downloads into sub-folders based
+                      on file extension.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettings({
+                        ...settings,
+                        subDirectoryRouting: [
+                          ...(settings.subDirectoryRouting || []),
+                          { pattern: "", subDirectory: "" },
+                        ],
+                      });
+                    }}
+                    className="px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors flex items-center space-x-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Rule</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2 text-xs pt-1">
+                  {(settings.subDirectoryRouting || []).length === 0 ? (
+                    <p className="text-xs text-zinc-400 italic">
+                      No sub-directory rules configured.
+                    </p>
+                  ) : (
+                    (settings.subDirectoryRouting || []).map((route, idx) => (
+                      <div key={idx} className="flex items-center space-x-2">
+                        <input
+                          type="text"
+                          value={route.pattern}
+                          onChange={(e) => {
+                            const updated = [
+                              ...(settings.subDirectoryRouting || []),
+                            ];
+                            updated[idx] = {
+                              ...updated[idx],
+                              pattern: e.target.value,
+                            };
+                            setSettings({
+                              ...settings,
+                              subDirectoryRouting: updated,
+                            });
+                          }}
+                          placeholder="Pattern (e.g. iso,dmg or zip,tar.gz)"
+                          className="flex-1 p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg font-mono text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <span className="text-zinc-400 font-mono">→</span>
+                        <input
+                          type="text"
+                          value={route.subDirectory}
+                          onChange={(e) => {
+                            const updated = [
+                              ...(settings.subDirectoryRouting || []),
+                            ];
+                            updated[idx] = {
+                              ...updated[idx],
+                              subDirectory: e.target.value,
+                            };
+                            setSettings({
+                              ...settings,
+                              subDirectoryRouting: updated,
+                            });
+                          }}
+                          placeholder="Sub-folder (e.g. Disk Images)"
+                          className="w-44 p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg font-mono text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = (
+                              settings.subDirectoryRouting || []
+                            ).filter((_, i) => i !== idx);
+                            setSettings({
+                              ...settings,
+                              subDirectoryRouting: updated,
+                            });
+                          }}
+                          className="p-2 text-zinc-400 hover:text-rose-500 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Form Actions */}
-          <div className="flex items-center justify-between pt-4">
-            <button
-              type="button"
-              onClick={handleResetDefaults}
-              className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset to Defaults</span>
-            </button>
+          {/* TAB 4: ENGINE & NETWORK */}
+          {activeTab === "engine" && (
+            <div className="space-y-4">
+              {/* Aria2 Engine Configuration */}
+              <div className="bg-white dark:bg-[#121215] border border-zinc-200/70 dark:border-zinc-800/80 rounded-xl p-5 shadow-xs space-y-4">
+                <h2 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">
+                  Aria2 Connection & Engine Defaults
+                </h2>
 
-            <button
-              type="submit"
-              className="inline-flex items-center space-x-2 px-6 py-2.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600 rounded-xl shadow-sm transition-colors"
-            >
-              <Save className="w-4 h-4" />
-              <span>Save Configuration</span>
-            </button>
-          </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                      Connections per File (Split: 1–16)
+                    </label>
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="range"
+                        min="1"
+                        max="16"
+                        value={settings.defaultSplit}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          setSettings({
+                            ...settings,
+                            defaultSplit: val,
+                            defaultMaxConnectionPerServer: val,
+                          });
+                        }}
+                        className="flex-1 accent-blue-600"
+                      />
+                      <span className="w-6 font-mono font-bold text-zinc-900 dark:text-zinc-100 text-xs">
+                        {settings.defaultSplit}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                      Min Split Size
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.defaultMinSplitSize}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          defaultMinSplitSize: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. 10M, 20M"
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg font-mono text-zinc-900 dark:text-zinc-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                      Max Download Speed Limit (0 = Unlimited)
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.defaultMaxDownloadLimit}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          defaultMaxDownloadLimit: e.target.value,
+                        })
+                      }
+                      placeholder="0 for unlimited, or e.g. 5M, 500K"
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg font-mono text-zinc-900 dark:text-zinc-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                      Default Proxy (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.defaultProxy}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          defaultProxy: e.target.value,
+                        })
+                      }
+                      placeholder="socks5://127.0.0.1:1080 or http://127.0.0.1:8080"
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg font-mono text-zinc-900 dark:text-zinc-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 space-y-2 text-xs">
+                  <label className="flex items-center space-x-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.defaultCheckCertificate}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          defaultCheckCertificate: e.target.checked,
+                        })
+                      }
+                      className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                    />
+                    <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                      Verify SSL/TLS Certificates (`check-certificate`)
+                    </span>
+                  </label>
+
+                  <label className="flex items-center space-x-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.autoFileRenaming}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          autoFileRenaming: e.target.checked,
+                        })
+                      }
+                      className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                    />
+                    <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                      Auto-Rename Duplicate Files (`auto-file-renaming`)
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Security & Header Forwarding */}
+              <div className="bg-white dark:bg-[#121215] border border-zinc-200/70 dark:border-zinc-800/80 rounded-xl p-5 shadow-xs space-y-3">
+                <h2 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">
+                  Authentication & Header Forwarding
+                </h2>
+
+                <div className="space-y-2.5 text-xs">
+                  <label className="flex items-center space-x-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.forwardCookies}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          forwardCookies: e.target.checked,
+                        })
+                      }
+                      className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                    />
+                    <div>
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Forward Domain-Scoped Cookies
+                      </span>
+                      <p className="text-[11px] text-zinc-500">
+                        Sends exact cookies for the target URL to aria2c for
+                        authenticated downloads.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center space-x-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.forwardUserAgent}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          forwardUserAgent: e.target.checked,
+                        })
+                      }
+                      className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                    />
+                    <div>
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Forward Browser User-Agent
+                      </span>
+                      <p className="text-[11px] text-zinc-500">
+                        Passes Chromium user-agent header to bypass
+                        anti-scraping filters.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center space-x-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.forwardReferer}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          forwardReferer: e.target.checked,
+                        })
+                      }
+                      className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4"
+                    />
+                    <div>
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Forward Referer Header
+                      </span>
+                      <p className="text-[11px] text-zinc-500">
+                        Passes initiating page referrer to satisfy
+                        anti-hotlinking rules.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
         </form>
-      </div>
+      </main>
     </div>
   );
 }

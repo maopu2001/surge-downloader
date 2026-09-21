@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import type { DownloadBinding, ExtensionSettings, PendingPromptItem } from "@aria2-browser/protocol";
 import { formatBytes, formatSpeed, formatEta } from "../utils/format.js";
 import { useSystemTheme } from "../utils/useTheme.js";
+import { FileIcon } from "../utils/FileIcon.js";
 import {
   Download,
   Settings,
@@ -18,7 +19,6 @@ import {
   Globe,
   FolderOpen,
   Folder,
-  FileText,
   ArrowRight,
   Copy,
   Check,
@@ -74,7 +74,7 @@ export function Popup() {
               setPromptDirectory(first.directory || "");
               setConflictWarning(
                 first.hasConflict
-                  ? "A completed file with this name already exists in destination folder. Please rename before downloading."
+                  ? "A file with this name already exists in destination folder."
                   : null
               );
               return first.id;
@@ -91,7 +91,7 @@ export function Popup() {
     });
 
     chrome.runtime.sendMessage({ type: "TEST_CONNECTION" }, (res) => {
-      if (res?.success && res.data.nativeHost.ok) {
+      if (res?.success && res.data.nativeHost?.ok) {
         setIsConnected(true);
       } else {
         setIsConnected(false);
@@ -171,7 +171,6 @@ export function Popup() {
       const chosenFilename = promptFilename.trim() || targetPrompt?.filename || "download";
       const chosenDirectory = promptDirectory.trim() || targetPrompt?.directory || undefined;
 
-      // Verify no conflict before dispatching
       const checkRes = await new Promise<{ exists: boolean; isCompleted: boolean }>((resolve) => {
         chrome.runtime.sendMessage(
           { type: "CHECK_FILE_CONFLICT", payload: { filename: chosenFilename, directory: chosenDirectory } },
@@ -186,7 +185,7 @@ export function Popup() {
       });
 
       if (checkRes.isCompleted) {
-        setConflictWarning(`File "${chosenFilename}" already exists in destination folder. Please rename before downloading.`);
+        setConflictWarning(`File "${chosenFilename}" already exists in destination folder.`);
         return;
       }
     }
@@ -214,7 +213,7 @@ export function Popup() {
             setPromptDirectory(next[0].directory || "");
             setConflictWarning(
               next[0].hasConflict
-                ? "A completed file with this name already exists in destination folder. Please rename before downloading."
+                ? "A file with this name already exists in destination folder."
                 : null
             );
           } else {
@@ -275,23 +274,26 @@ export function Popup() {
 
   const activeDownloads = downloads.filter((d) => d.state === "aria2-active" || d.state === "handoff-pending");
   const anyActive = activeDownloads.some((d) => d.speed > 0);
+  const totalSpeed = downloads.reduce((acc, d) => acc + (d.speed || 0), 0);
 
   return (
-    <div className="relative flex flex-col h-[520px] bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans text-sm select-none transition-colors duration-200">
+    <div className="relative flex flex-col h-[520px] w-[420px] bg-[#fafafa] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 font-sans text-xs select-none antialiased">
       {/* Top Header */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between shadow-sm">
+      <header className="px-3.5 py-2.5 bg-white dark:bg-[#121215] border-b border-zinc-200/80 dark:border-zinc-800/80 flex items-center justify-between z-10">
         <div className="flex items-center space-x-2.5">
-          <img src="/icons/icon-48.png" alt="Surge" className="w-7 h-7 rounded-lg shadow-sm" />
-          <div>
-            <h1 className="text-sm font-bold text-slate-900 dark:text-white leading-tight">Surge</h1>
-            <div className="flex items-center space-x-1.5 mt-0.5">
+          <div className="w-6 h-6 rounded-md bg-blue-600/10 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xs">
+            <Download className="w-3.5 h-3.5" />
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="font-semibold text-[13px] tracking-tight">Surge</span>
+            <div className="flex items-center space-x-1.5 px-1.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/60 dark:border-zinc-700/60 text-[10px]">
               <span
-                className={`w-2 h-2 rounded-full ${
+                className={`w-1.5 h-1.5 rounded-full ${
                   isConnected ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
                 }`}
               />
-              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                {isConnected ? "Host Connected" : "Host Offline"}
+              <span className="text-zinc-500 dark:text-zinc-400 font-medium">
+                {isConnected ? "Host Ready" : "Host Offline"}
               </span>
             </div>
           </div>
@@ -299,152 +301,116 @@ export function Popup() {
 
         <div className="flex items-center space-x-1">
           {activeDownloads.length > 0 && (
-            <>
-              {anyActive ? (
-                <button
-                  onClick={handlePauseAll}
-                  title="Pause All Downloads"
-                  className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
-                >
-                  <Pause className="w-4 h-4 fill-current" />
-                </button>
-              ) : (
-                <button
-                  onClick={handleResumeAll}
-                  title="Resume All Downloads"
-                  className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                </button>
-              )}
-            </>
+            <button
+              onClick={anyActive ? handlePauseAll : handleResumeAll}
+              title={anyActive ? "Pause All" : "Resume All"}
+              className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+            >
+              {anyActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            </button>
           )}
-
           <button
             onClick={openDashboard}
-            title="Open Full Dashboard"
-            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
+            title="Open Dashboard"
+            className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
           >
-            <ExternalLink className="w-4 h-4" />
+            <ExternalLink className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={openOptions}
-            title="Open Settings"
-            className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors"
+            title="Settings"
+            className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="w-3.5 h-3.5" />
           </button>
         </div>
-      </div>
+      </header>
 
       {/* Mode Selector Strip */}
-      <div className="bg-slate-100/80 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Interception:</span>
-        <div className="flex bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded-lg text-xs font-semibold">
-          {(["auto", "ask", "off"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => handleModeChange(m)}
-              className={`px-3 py-1 rounded-md transition-all ${
-                settings?.mode === m
-                  ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-300 shadow-sm font-bold"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              {m.toUpperCase()}
-            </button>
-          ))}
+      <div className="px-3.5 py-1.5 bg-[#f4f4f5]/60 dark:bg-[#141417]/60 border-b border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between">
+        <span className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">Interception</span>
+        <div className="flex bg-zinc-200/70 dark:bg-zinc-800/80 p-0.5 rounded-md text-[11px] font-medium">
+          {(["auto", "ask", "off"] as const).map((m) => {
+            const active = settings?.mode === m;
+            return (
+              <button
+                key={m}
+                onClick={() => handleModeChange(m)}
+                className={`px-2.5 py-0.5 rounded transition-all ${
+                  active
+                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs font-semibold"
+                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                }`}
+              >
+                {m.toUpperCase()}
+              </button>
+            );
+          })}
         </div>
       </div>
 
+      {/* Offline Alert Strip */}
       {!isConnected && (
-        <div className="bg-amber-50 dark:bg-amber-950/50 border-b border-amber-300 dark:border-amber-800/80 p-3 text-[11px] text-amber-900 dark:text-amber-100 flex flex-col space-y-2">
+        <div className="mx-3.5 mt-2.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 text-[11px] flex flex-col space-y-1.5">
           <div className="flex items-center justify-between">
-            <div className="font-bold flex items-center space-x-1.5 text-amber-700 dark:text-amber-300">
-              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-              <span>Native Host / aria2c Offline</span>
+            <div className="flex items-center space-x-1.5 font-medium">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+              <span>Native Host / aria2c not connected</span>
             </div>
             <button
               onClick={openOptions}
-              className="text-sky-600 dark:text-sky-400 font-bold hover:underline"
+              className="text-blue-600 dark:text-blue-400 font-semibold hover:underline"
             >
-              Setup Guide →
+              Setup →
             </button>
           </div>
-
-          <div className="bg-slate-900 text-slate-100 px-2.5 py-1.5 rounded-lg flex items-center justify-between font-mono text-[10px]">
-            <span className="select-all truncate">{getOsInstallCommand()}</span>
+          <div className="flex items-center justify-between bg-zinc-900 text-zinc-200 px-2 py-1 rounded font-mono text-[10px]">
+            <span className="truncate">{getOsInstallCommand()}</span>
             <button
               onClick={() => {
                 navigator.clipboard.writeText(getOsInstallCommand());
                 setCopiedCmd(true);
                 setTimeout(() => setCopiedCmd(false), 2000);
               }}
-              className="ml-2 px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded font-sans font-bold flex items-center space-x-1 flex-shrink-0 transition-colors"
+              className="ml-2 px-1.5 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-amber-300 rounded font-sans flex items-center space-x-1"
             >
-              {copiedCmd ? (
-                <>
-                  <Check className="w-3 h-3 text-emerald-400" />
-                  <span className="text-emerald-400">Copied</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3 h-3" />
-                  <span>Copy</span>
-                </>
-              )}
+              {copiedCmd ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              <span>{copiedCmd ? "Copied" : "Copy"}</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Pending ASK Prompts (Opened automatically from menubar) */}
+      {/* Pending ASK Prompts */}
       {pendingPrompts.length > 0 && (
-        <div className="bg-sky-50/90 dark:bg-slate-900 border-b-2 border-sky-400 dark:border-sky-500 p-4 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <img src="/icons/icon-48.png" alt="Surge" className="w-6 h-6 rounded-md shadow-sm" />
-              <div>
-                <h2 className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
-                  Download Detected (Surge ASK)
-                </h2>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                  {pendingPrompts.length > 1
-                    ? `${pendingPrompts.length} downloads pending decision`
-                    : "Confirm file name and folder before download"}
-                </p>
+        <div className="m-3 p-3 bg-white dark:bg-[#141417] border border-blue-500/40 rounded-xl shadow-sm space-y-2.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center space-x-2 min-w-0">
+              <FileIcon filename={pendingPrompts[0].filename} size={16} />
+              <div className="min-w-0">
+                <span className="font-semibold text-zinc-900 dark:text-zinc-100 truncate block text-xs">
+                  {pendingPrompts[0].filename || "Incoming download"}
+                </span>
+                <span className="text-[10px] text-zinc-400 truncate block">
+                  {pendingPrompts[0].url}
+                </span>
               </div>
             </div>
             {pendingPrompts[0].size > 0 && (
-              <span className="text-[11px] font-mono font-semibold px-2 py-0.5 bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 rounded border border-sky-200 dark:border-sky-800">
+              <span className="text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 flex-shrink-0">
                 {formatBytes(pendingPrompts[0].size)}
               </span>
             )}
           </div>
 
-          {/* URL */}
-          <div
-            className="text-[11px] text-slate-500 dark:text-slate-400 truncate flex items-center space-x-1"
-            title={pendingPrompts[0].url}
-          >
-            <Globe className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate">{pendingPrompts[0].url}</span>
-          </div>
-
-          {/* Conflict Warning */}
           {conflictWarning && (
-            <div className="flex items-start space-x-2 p-2 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-lg text-rose-700 dark:text-rose-300 text-[11px] font-medium leading-snug">
-              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-rose-500 mt-0.5" />
-              <span>{conflictWarning}</span>
+            <div className="flex items-center space-x-1.5 p-1.5 bg-rose-500/10 border border-rose-500/20 rounded-md text-rose-600 dark:text-rose-400 text-[11px]">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate">{conflictWarning}</span>
             </div>
           )}
 
-          {/* File Name input */}
-          <div className="space-y-1">
-            <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center space-x-1">
-              <FileText className="w-3 h-3 text-sky-500" />
-              <span>File Name:</span>
-            </label>
+          <div className="space-y-1.5">
             <input
               type="text"
               value={promptFilename}
@@ -452,61 +418,47 @@ export function Popup() {
                 setPromptFilename(e.target.value);
                 setConflictWarning(null);
               }}
-              placeholder={pendingPrompts[0].filename || "download"}
-              className={`w-full px-2.5 py-1 bg-white dark:bg-slate-950 border rounded-lg text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 ${
-                conflictWarning
-                  ? "border-rose-400 dark:border-rose-600 focus:ring-rose-500"
-                  : "border-slate-300 dark:border-slate-700 focus:ring-sky-500"
-              }`}
+              placeholder="Filename"
+              className="w-full px-2 py-1 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-          </div>
-
-          {/* Folder Selection via OS */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center space-x-1">
-                <Folder className="w-3 h-3 text-sky-500" />
-                <span>Save Folder:</span>
-              </label>
+            <div className="flex items-center space-x-1.5">
+              <input
+                type="text"
+                value={promptDirectory}
+                onChange={(e) => setPromptDirectory(e.target.value)}
+                placeholder="Default save folder (~/Downloads)"
+                className="flex-1 px-2 py-1 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+              />
               <button
                 type="button"
                 onClick={() => handleSelectFolder(pendingPrompts[0].id)}
                 disabled={selectingFolder}
-                className="px-2.5 py-0.5 bg-sky-100 hover:bg-sky-200 dark:bg-sky-950 dark:hover:bg-sky-900 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-800 rounded font-semibold text-[10px] transition-colors flex items-center space-x-1"
+                className="px-2 py-1 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-md text-[11px] font-medium transition-colors flex-shrink-0"
               >
-                <Folder className="w-3 h-3" />
-                <span>{selectingFolder ? "Choosing..." : "Choose Folder"}</span>
+                {selectingFolder ? "..." : "Browse"}
               </button>
             </div>
-            <input
-              type="text"
-              value={promptDirectory}
-              onChange={(e) => setPromptDirectory(e.target.value)}
-              placeholder={pendingPrompts[0].directory || "Default (~/Downloads)"}
-              className="w-full px-2.5 py-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 focus:ring-sky-500"
-            />
           </div>
 
-          {/* Buttons */}
-          <div className="flex items-center justify-between pt-2 border-t border-sky-100 dark:border-slate-800">
+          <div className="flex items-center justify-between pt-1 border-t border-zinc-100 dark:border-zinc-800/80">
             <button
               onClick={() => handlePromptDecision(pendingPrompts[0].id, "cancel")}
-              className="px-2.5 py-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-lg text-xs font-semibold transition-colors"
+              className="text-zinc-400 hover:text-rose-500 text-[11px] transition-colors"
             >
               Cancel
             </button>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1.5">
               <button
                 onClick={() => handlePromptDecision(pendingPrompts[0].id, "browser")}
-                className="px-2.5 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="px-2.5 py-1 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md text-[11px] font-medium transition-colors"
               >
-                Keep in Browser
+                Keep Browser
               </button>
               <button
                 onClick={() => handlePromptDecision(pendingPrompts[0].id, "aria2")}
-                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center space-x-1"
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-[11px] font-semibold transition-colors flex items-center space-x-1"
               >
-                <span>Download with aria2c</span>
+                <span>aria2c</span>
                 <ArrowRight className="w-3 h-3" />
               </button>
             </div>
@@ -515,18 +467,18 @@ export function Popup() {
       )}
 
       {/* Download Items List */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
         {loading ? (
-          <div className="h-full flex items-center justify-center text-slate-400 dark:text-slate-500">
-            <Activity className="w-6 h-6 animate-spin mr-2" />
+          <div className="h-full flex items-center justify-center text-zinc-400">
+            <Activity className="w-4 h-4 animate-spin mr-2" />
             <span>Loading...</span>
           </div>
         ) : downloads.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 py-12">
-            <Download className="w-10 h-10 text-slate-300 dark:text-slate-700 stroke-[1.5] mb-2" />
-            <p className="font-medium text-slate-600 dark:text-slate-300 text-sm">No downloads yet</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 text-center">
-              Intercepted downloads will appear here automatically.
+          <div className="h-full flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-600 py-12">
+            <Download className="w-8 h-8 text-zinc-300 dark:text-zinc-700 stroke-[1.2] mb-2" />
+            <p className="font-medium text-zinc-600 dark:text-zinc-400 text-xs">No downloads yet</p>
+            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5 text-center">
+              Intercepted downloads appear here automatically
             </p>
           </div>
         ) : (
@@ -547,167 +499,137 @@ export function Popup() {
             return (
               <div
                 key={item.gid || item.browserId}
-                className={`bg-white dark:bg-slate-900 border rounded-lg p-3 shadow-sm transition-all ${
-                  isFileMissing
-                    ? "border-rose-300 dark:border-rose-900/60 bg-rose-50/20 dark:bg-rose-950/10"
-                    : "border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
-                }`}
+                className="group relative bg-white dark:bg-[#121215] border border-zinc-200/70 dark:border-zinc-800/80 rounded-lg p-2.5 transition-all hover:border-zinc-300 dark:hover:border-zinc-700"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className="font-medium text-slate-900 dark:text-white text-xs truncate leading-snug"
-                      title={item.filename || item.url}
-                    >
-                      {item.filename || "Interception pending..."}
-                    </p>
-                    {isFileMissing ? (
+                  <div className="flex items-start space-x-2 min-w-0 flex-1">
+                    <div className="mt-0.5 flex-shrink-0">
+                      <FileIcon filename={item.filename || item.url} size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
                       <p
-                        className="text-[11px] text-rose-500 dark:text-rose-400 font-medium truncate mt-0.5"
-                        title={item.errorMessage || "File or .aria2 control file was deleted from folder"}
+                        className="font-medium text-zinc-900 dark:text-zinc-100 text-[12px] truncate leading-tight"
+                        title={item.filename || item.url}
                       >
-                        {item.errorMessage || "File or .aria2 control file was deleted from folder"}
+                        {item.filename || "Interception pending..."}
                       </p>
-                    ) : (
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5" title={item.url}>
-                        {item.url}
-                      </p>
-                    )}
+                      {isFileMissing ? (
+                        <p className="text-[10px] text-rose-500 dark:text-rose-400 truncate mt-0.5">
+                          File removed from disk
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-zinc-400 dark:text-zinc-500 truncate mt-0.5" title={item.url}>
+                          {item.url}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center space-x-1 flex-shrink-0">
+                  {/* Action Icons */}
+                  <div className="flex items-center space-x-0.5 flex-shrink-0">
                     {item.gid && (
                       <>
-                        {/* File Missing: Restart, Direct Remove (no prompt) */}
                         {isFileMissing && (
                           <>
                             <button
                               onClick={() => handleRestart(item.gid)}
-                              title="Restart Download"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-sky-500 dark:text-sky-400 transition-colors"
+                              title="Restart"
+                              className="p-1 text-zinc-400 hover:text-blue-500 dark:hover:text-blue-400 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <RefreshCw className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleDirectRemove(item.gid)}
-                              title="Remove without prompt"
-                              className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/60 rounded text-rose-600 dark:text-rose-400 transition-colors"
+                              title="Remove"
+                              className="p-1 text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </>
                         )}
 
-                        {/* Downloading: pause, cancel, show in folder */}
                         {isActive && (
                           <>
                             <button
                               onClick={() => handlePause(item.gid)}
                               title="Pause"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-amber-500 dark:text-amber-400 transition-colors"
+                              className="p-1 text-zinc-400 hover:text-amber-500 dark:hover:text-amber-400 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
-                              <Pause className="w-3.5 h-3.5 fill-current" />
+                              <Pause className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleCancel(item.gid)}
                               title="Cancel"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-rose-500 dark:text-rose-400 transition-colors"
+                              className="p-1 text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleOpenFolder(item.gid, item.filename)}
-                              title="Show in folder"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-sky-600 dark:text-slate-500 dark:hover:text-sky-400 transition-colors"
+                              title="Show in Folder"
+                              className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <FolderOpen className="w-3.5 h-3.5" />
                             </button>
                           </>
                         )}
 
-                        {/* Paused: resume, cancel, show in folder */}
                         {isPaused && (
                           <>
                             <button
                               onClick={() => handleResume(item.gid)}
                               title="Resume"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-emerald-500 dark:text-emerald-400 transition-colors"
+                              className="p-1 text-zinc-400 hover:text-emerald-500 dark:hover:text-emerald-400 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
-                              <Play className="w-3.5 h-3.5 fill-current" />
+                              <Play className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleCancel(item.gid)}
                               title="Cancel"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-rose-500 dark:text-rose-400 transition-colors"
+                              className="p-1 text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleOpenFolder(item.gid, item.filename)}
-                              title="Show in folder"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-sky-600 dark:text-slate-500 dark:hover:text-sky-400 transition-colors"
+                              title="Show in Folder"
+                              className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <FolderOpen className="w-3.5 h-3.5" />
                             </button>
                           </>
                         )}
 
-                        {/* Failed: refresh link, remove, show in folder */}
-                        {isFailed && (
+                        {(isFailed || isCompleted) && (
                           <>
-                            <button
-                              onClick={() =>
-                                setRefreshingLink({ gid: item.gid, url: item.url, filename: item.filename })
-                              }
-                              title="Refresh link"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-sky-500 dark:text-sky-400 transition-colors"
-                            >
-                              <Link2 className="w-3.5 h-3.5" />
-                            </button>
+                            {isFailed && (
+                              <button
+                                onClick={() =>
+                                  setRefreshingLink({ gid: item.gid, url: item.url, filename: item.filename })
+                                }
+                                title="Refresh URL"
+                                className="p-1 text-zinc-400 hover:text-blue-500 dark:hover:text-blue-400 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                              >
+                                <Link2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             <button
                               onClick={() =>
                                 setConfirmRemove({
                                   gid: item.gid,
                                   filename: item.filename || "download",
-                                  isCompleted: false,
+                                  isCompleted,
                                 })
                               }
                               title="Remove"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-rose-500 dark:text-slate-500 dark:hover:text-rose-400 transition-colors"
+                              className="p-1 text-zinc-400 hover:text-rose-500 dark:hover:text-rose-400 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleOpenFolder(item.gid, item.filename)}
-                              title="Show in folder"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-sky-600 dark:text-slate-500 dark:hover:text-sky-400 transition-colors"
-                            >
-                              <FolderOpen className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        )}
-
-                        {/* Completed: remove, show in folder */}
-                        {isCompleted && (
-                          <>
-                            <button
-                              onClick={() =>
-                                setConfirmRemove({
-                                  gid: item.gid,
-                                  filename: item.filename || "download",
-                                  isCompleted: true,
-                                })
-                              }
-                              title="Remove"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-rose-500 dark:text-slate-500 dark:hover:text-rose-400 transition-colors"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleOpenFolder(item.gid, item.filename)}
-                              title="Show in folder"
-                              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-sky-600 dark:text-slate-500 dark:hover:text-sky-400 transition-colors"
+                              title="Show in Folder"
+                              className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                             >
                               <FolderOpen className="w-3.5 h-3.5" />
                             </button>
@@ -718,11 +640,11 @@ export function Popup() {
                   </div>
                 </div>
 
-                {/* Progress Bar */}
-                <div className="mt-2.5">
-                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                {/* Progress bar */}
+                <div className="mt-2">
+                  <div className="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-1 overflow-hidden">
                     <div
-                      className={`h-1.5 rounded-full transition-all duration-300 ${
+                      className={`h-1 rounded-full transition-all duration-300 ${
                         isFileMissing
                           ? "bg-rose-500"
                           : isCompleted
@@ -731,41 +653,50 @@ export function Popup() {
                           ? "bg-rose-500"
                           : isPaused
                           ? "bg-amber-500"
-                          : "bg-sky-500"
+                          : "bg-blue-600 dark:bg-blue-500"
                       }`}
                       style={{ width: `${percent}%` }}
                     />
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+                  {/* Status metrics line */}
+                  <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 font-mono tabular-nums">
                     <span>
                       {isFileMissing ? (
-                        <span className="text-rose-600 dark:text-rose-400 font-bold uppercase text-[10px] tracking-wider">
-                          File Missing on Disk
-                        </span>
+                        <span className="text-rose-500 dark:text-rose-400 font-sans text-[10px] font-medium">Missing</span>
+                      ) : item.totalBytes > 0 ? (
+                        `${formatBytes(item.receivedBytes)} / ${formatBytes(item.totalBytes)} (${percent}%)`
                       ) : (
-                        `${formatBytes(item.receivedBytes)} of ${formatBytes(item.totalBytes)} (${percent}%)`
+                        formatBytes(item.receivedBytes)
                       )}
                     </span>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1.5">
                       {isActive && item.speed > 0 && (
                         <>
-                          <span className="font-semibold text-slate-700 dark:text-slate-200">
+                          <span className="text-zinc-700 dark:text-zinc-300 font-medium">
                             {formatSpeed(item.speed)}
                           </span>
                           {item.totalBytes > item.receivedBytes && (
-                            <span>ETA: {formatEta((item.totalBytes - item.receivedBytes) / item.speed)}</span>
+                            <span className="text-zinc-400">
+                              • {formatEta((item.totalBytes - item.receivedBytes) / item.speed)}
+                            </span>
                           )}
                         </>
                       )}
                       {isCompleted && (
-                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Complete</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-sans text-[10px] font-medium">
+                          Done
+                        </span>
                       )}
                       {isPaused && (
-                        <span className="text-amber-500 dark:text-amber-400 font-semibold">Paused</span>
+                        <span className="text-amber-600 dark:text-amber-400 font-sans text-[10px] font-medium">
+                          Paused
+                        </span>
                       )}
                       {isFailed && (
-                        <span className="text-rose-500 dark:text-rose-400 font-semibold">Cancelled</span>
+                        <span className="text-rose-500 dark:text-rose-400 font-sans text-[10px] font-medium">
+                          Cancelled
+                        </span>
                       )}
                     </div>
                   </div>
@@ -777,38 +708,47 @@ export function Popup() {
       </div>
 
       {/* Footer */}
-      <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-        <span>{activeDownloads.length} active downloads</span>
+      <footer className="px-3.5 py-2 bg-white dark:bg-[#121215] border-t border-zinc-200/80 dark:border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 z-10">
+        <div className="flex items-center space-x-1.5 font-mono tabular-nums">
+          <span>{activeDownloads.length} active</span>
+          {totalSpeed > 0 && (
+            <>
+              <span>•</span>
+              <span className="text-zinc-700 dark:text-zinc-300 font-medium">{formatSpeed(totalSpeed)}</span>
+            </>
+          )}
+        </div>
         <button
           onClick={openDashboard}
-          className="text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 font-semibold hover:underline"
+          className="text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium hover:underline flex items-center space-x-0.5"
         >
-          View all history →
+          <span>Dashboard</span>
+          <ArrowRight className="w-3 h-3" />
         </button>
-      </div>
+      </footer>
 
       {/* Refresh Link Modal */}
       {refreshingLink && (
-        <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 w-full shadow-2xl space-y-3">
+        <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#141417] border border-zinc-200 dark:border-zinc-800 rounded-xl p-3.5 w-full shadow-modal space-y-2.5">
             <div className="flex items-center space-x-2">
-              <Link2 className="w-4 h-4 text-sky-500" />
-              <h3 className="font-bold text-xs text-slate-900 dark:text-white">Refresh Download Link</h3>
+              <Link2 className="w-4 h-4 text-blue-500" />
+              <h3 className="font-semibold text-xs text-zinc-900 dark:text-zinc-100">Refresh Download Link</h3>
             </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 truncate font-semibold" title={refreshingLink.filename}>
+            <p className="text-[11px] text-zinc-500 truncate font-mono" title={refreshingLink.filename}>
               {refreshingLink.filename}
             </p>
             <textarea
               rows={3}
               value={refreshingLink.url}
               onChange={(e) => setRefreshingLink({ ...refreshingLink, url: e.target.value })}
-              placeholder="Paste updated download link / token..."
-              className="w-full text-xs p-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-mono resize-none focus:outline-none focus:ring-1 focus:ring-sky-500"
+              placeholder="Paste updated download link..."
+              className="w-full text-xs p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md text-zinc-900 dark:text-zinc-100 font-mono resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-            <div className="flex justify-end space-x-2 pt-1">
+            <div className="flex justify-end space-x-1.5 pt-1">
               <button
                 onClick={() => setRefreshingLink(null)}
-                className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-3 py-1.5"
+                className="text-[11px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 px-2.5 py-1"
               >
                 Cancel
               </button>
@@ -817,7 +757,7 @@ export function Popup() {
                   handleRefreshUrl(refreshingLink.gid, refreshingLink.url.trim());
                   setRefreshingLink(null);
                 }}
-                className="text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600 px-3 py-1.5 rounded-lg shadow-sm transition-colors"
+                className="text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-md transition-colors"
               >
                 Update & Resume
               </button>
@@ -826,45 +766,45 @@ export function Popup() {
         </div>
       )}
 
-      {/* Remove Confirmation Popover / Modal */}
+      {/* Remove Confirmation Popover */}
       {confirmRemove && (
-        <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 w-full shadow-2xl space-y-3">
+        <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#141417] border border-zinc-200 dark:border-zinc-800 rounded-xl p-3.5 w-full shadow-modal space-y-2.5">
             <div className="flex items-center space-x-2">
               <Trash2 className="w-4 h-4 text-rose-500" />
-              <h3 className="font-bold text-xs text-slate-900 dark:text-white">
-                {confirmRemove.isCompleted ? "Remove Completed Download" : "Remove Incomplete Download"}
+              <h3 className="font-semibold text-xs text-zinc-900 dark:text-zinc-100">
+                {confirmRemove.isCompleted ? "Remove Completed File" : "Remove Incomplete Task"}
               </h3>
             </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 truncate font-semibold" title={confirmRemove.filename}>
+            <p className="text-[11px] text-zinc-500 truncate font-mono" title={confirmRemove.filename}>
               {confirmRemove.filename}
             </p>
 
             {confirmRemove.isCompleted ? (
-              <div className="pt-2 space-y-2">
+              <div className="space-y-1.5 pt-1">
                 <button
                   onClick={() => executeRemove(confirmRemove.gid, false)}
-                  className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-lg transition-colors text-left flex items-center justify-between"
+                  className="w-full py-1.5 px-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs font-medium rounded-md transition-colors text-left flex items-center justify-between"
                 >
                   <span>Remove from list only</span>
-                  <span className="text-[10px] text-slate-400 font-normal">Keep file</span>
+                  <span className="text-[10px] text-zinc-400">Keep file</span>
                 </button>
                 <button
                   onClick={() => executeRemove(confirmRemove.gid, true)}
-                  className="w-full py-2 px-3 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold rounded-lg border border-rose-200 dark:border-rose-800 transition-colors text-left flex items-center justify-between"
+                  className="w-full py-1.5 px-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-medium rounded-md border border-rose-500/20 transition-colors text-left flex items-center justify-between"
                 >
                   <span>Delete file from disk & remove</span>
-                  <span className="text-[10px] text-rose-400 font-normal">Purge file</span>
+                  <span className="text-[10px] text-rose-500">Purge file</span>
                 </button>
               </div>
             ) : (
-              <div className="pt-1 space-y-2">
-                <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg border border-amber-200 dark:border-amber-900/50">
-                  This download is not complete. Removing it will also delete any partial files and resume data from disk.
+              <div className="space-y-2 pt-1">
+                <p className="text-[11px] text-zinc-500 leading-normal">
+                  This download is incomplete. Removing it will delete partial data from disk.
                 </p>
                 <button
                   onClick={() => executeRemove(confirmRemove.gid, true)}
-                  className="w-full py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors text-center"
+                  className="w-full py-1.5 px-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-md transition-colors text-center"
                 >
                   Delete Partial Files & Remove
                 </button>
@@ -874,7 +814,7 @@ export function Popup() {
             <div className="pt-1 flex justify-end">
               <button
                 onClick={() => setConfirmRemove(null)}
-                className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 font-medium px-2 py-1"
+                className="text-[11px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-medium px-2 py-1"
               >
                 Cancel
               </button>

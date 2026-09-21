@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { formatBytes } from "../utils/format.js";
 import { useSystemTheme } from "../utils/useTheme.js";
+import { FileIcon } from "../utils/FileIcon.js";
 import {
   Download,
   Globe,
@@ -49,7 +50,7 @@ export function Prompt() {
       { type: "CHECK_FILE_CONFLICT", payload: { filename: parsedFilename, directory: parsedDir || undefined } },
       (res) => {
         if (res?.success && res.data?.isCompleted) {
-          setConflictWarning(`File "${parsedFilename}" already exists in destination folder. Please rename.`);
+          setConflictWarning(`File "${parsedFilename}" already exists in destination folder.`);
         }
       }
     );
@@ -103,7 +104,7 @@ export function Prompt() {
       });
 
       if (checkRes.isCompleted) {
-        setConflictWarning(`File "${chosenFilename}" already exists in destination folder. Please rename.`);
+        setConflictWarning(`File "${chosenFilename}" already exists in destination folder.`);
         return;
       }
     }
@@ -145,50 +146,66 @@ export function Prompt() {
     );
   };
 
+  const getDomain = (rawUrl: string) => {
+    try {
+      return new URL(rawUrl).hostname;
+    } catch {
+      return rawUrl;
+    }
+  };
+
   return (
-    <div className="flex flex-col justify-between min-h-[460px] bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 rounded-xl p-5 select-none font-sans text-xs border border-slate-200 dark:border-slate-800 shadow-lg transition-colors">
+    <div className="flex flex-col justify-between min-h-[440px] bg-white dark:bg-[#121215] text-zinc-900 dark:text-zinc-100 rounded-xl p-5 select-none font-sans text-xs border border-zinc-200/80 dark:border-zinc-800/80 shadow-modal antialiased">
       <div className="space-y-4">
         {/* Header */}
-        <div className="flex items-center space-x-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <img src="/icons/icon-48.png" alt="Surge" className="w-8 h-8 rounded-lg shadow-sm" />
+        <div className="flex items-center space-x-2.5 pb-3 border-b border-zinc-100 dark:border-zinc-800/80">
+          <div className="w-7 h-7 rounded-lg bg-blue-600/10 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">
+            <Download className="w-4 h-4" />
+          </div>
           <div>
-            <h1 className="font-bold text-slate-900 dark:text-white text-sm">Surge Download Detected</h1>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              Customize file name and folder before downloading
+            <h1 className="font-bold text-zinc-900 dark:text-white text-xs">Download Detected</h1>
+            <p className="text-[11px] text-zinc-500">
+              Confirm save destination or adjust aria2 options
             </p>
           </div>
         </div>
 
-        {/* URL & Size Summary */}
-        <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg border border-slate-200/70 dark:border-slate-700/60 space-y-1.5">
-          <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-            <span className="font-medium">Detected Size:</span>
-            <span className="font-semibold text-slate-900 dark:text-white font-mono">
-              {size > 0 ? formatBytes(size) : "Unknown size"}
-            </span>
+        {/* File preview badge */}
+        <div className="bg-zinc-50 dark:bg-zinc-900/60 p-3 rounded-lg border border-zinc-200/60 dark:border-zinc-800/60 flex items-start space-x-2.5">
+          <div className="mt-0.5 flex-shrink-0">
+            <FileIcon filename={filename} size={20} />
           </div>
-          <div className="flex items-start space-x-1.5 text-slate-500 dark:text-slate-400">
-            <Globe className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-            <span className="truncate text-[11px]" title={url}>
-              {url}
-            </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 truncate block">
+                {filename}
+              </span>
+              {size > 0 && (
+                <span className="text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded bg-zinc-200/60 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex-shrink-0 font-medium">
+                  {formatBytes(size)}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center space-x-1 text-zinc-400 text-[10px] mt-0.5 truncate" title={url}>
+              <Globe className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate">{getDomain(url)}</span>
+            </div>
           </div>
         </div>
 
         {/* Conflict Warning */}
         {conflictWarning && (
-          <div className="flex items-start space-x-2 p-2.5 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-lg text-rose-700 dark:text-rose-300 text-xs font-medium leading-snug">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0 text-rose-500 mt-0.5" />
-            <span>{conflictWarning}</span>
+          <div className="flex items-center space-x-2 p-2 bg-rose-500/10 border border-rose-500/20 rounded-md text-rose-600 dark:text-rose-400 text-[11px]">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="truncate">{conflictWarning}</span>
           </div>
         )}
 
-        {/* Change File Name & Folder */}
-        <div className="space-y-3">
+        {/* Inputs */}
+        <div className="space-y-3 text-xs">
           <div>
-            <label className="block text-slate-700 dark:text-slate-300 font-semibold text-xs mb-1 flex items-center space-x-1.5">
-              <FileText className="w-3.5 h-3.5 text-sky-500" />
-              <span>File Name:</span>
+            <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+              File Name
             </label>
             <input
               type="text"
@@ -197,37 +214,31 @@ export function Prompt() {
                 setFilename(e.target.value);
                 setConflictWarning(null);
               }}
-              placeholder="e.g. filename.zip"
-              className={`w-full px-3 py-1.5 bg-white dark:bg-slate-950 border rounded-lg text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 ${
-                conflictWarning
-                  ? "border-rose-400 dark:border-rose-600 focus:ring-rose-500"
-                  : "border-slate-300 dark:border-slate-700 focus:ring-sky-500 focus:border-sky-500"
-              }`}
+              placeholder="filename.zip"
+              className="w-full px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold text-xs flex items-center space-x-1.5">
-                <Folder className="w-3.5 h-3.5 text-sky-500" />
-                <span>Save Folder:</span>
+              <label className="block font-medium text-zinc-700 dark:text-zinc-300">
+                Save Destination
               </label>
               <button
                 type="button"
                 onClick={handleBrowseFolder}
                 disabled={selectingFolder}
-                className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900/60 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded font-semibold text-[11px] transition-colors flex items-center space-x-1"
+                className="px-2 py-0.5 text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
               >
-                <Folder className="w-3 h-3" />
-                <span>{selectingFolder ? "Choosing..." : "Choose Folder"}</span>
+                {selectingFolder ? "Choosing..." : "Browse..."}
               </button>
             </div>
             <input
               type="text"
               value={directory}
               onChange={(e) => setDirectory(e.target.value)}
-              placeholder="Default ~/Downloads or choose folder"
-              className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+              placeholder="Default ~/Downloads or custom folder"
+              className="w-full px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -237,17 +248,17 @@ export function Prompt() {
           <button
             type="button"
             onClick={() => setShowOptions(!showOptions)}
-            className="flex items-center space-x-1 text-slate-500 hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-400 font-medium transition-colors"
+            className="flex items-center space-x-1 text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 text-xs font-medium transition-colors"
           >
             <Sliders className="w-3.5 h-3.5" />
-            <span>More Aria2 Options</span>
+            <span>Advanced aria2 options</span>
             {showOptions ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
 
           {showOptions && (
-            <div className="mt-2 space-y-2.5 bg-slate-50/80 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+            <div className="mt-2 space-y-2.5 bg-zinc-50/80 dark:bg-zinc-900/40 p-3 rounded-lg border border-zinc-200/60 dark:border-zinc-800/60 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-300 font-medium">Connections / Split:</span>
+                <span className="text-zinc-600 dark:text-zinc-300 font-medium">Connections / Split:</span>
                 <div className="flex items-center space-x-2">
                   <input
                     type="range"
@@ -255,42 +266,42 @@ export function Prompt() {
                     max="16"
                     value={split}
                     onChange={(e) => setSplit(parseInt(e.target.value, 10))}
-                    className="w-24 accent-sky-500"
+                    className="w-24 accent-blue-600"
                   />
-                  <span className="w-5 text-right font-mono font-semibold">{split}</span>
+                  <span className="w-4 text-right font-mono font-bold">{split}</span>
                 </div>
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-300 font-medium">Speed Limit (0=unlimited):</span>
+                <span className="text-zinc-600 dark:text-zinc-300 font-medium">Speed Limit (0=unlimited):</span>
                 <input
                   type="text"
                   value={maxLimit}
                   onChange={(e) => setMaxLimit(e.target.value)}
                   placeholder="e.g. 5M"
-                  className="w-24 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-right font-mono"
+                  className="w-20 px-2 py-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded text-right font-mono text-xs"
                 />
               </div>
 
               <div className="flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-300 font-medium">Sub-Folder Category:</span>
+                <span className="text-zinc-600 dark:text-zinc-300 font-medium">Sub-Directory:</span>
                 <input
                   type="text"
                   value={subDirectory}
                   onChange={(e) => setSubDirectory(e.target.value)}
                   placeholder="e.g. ISOs"
-                  className="w-32 px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded font-mono"
+                  className="w-28 px-2 py-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded font-mono text-xs"
                 />
               </div>
 
               <div className="flex flex-col space-y-1">
-                <span className="text-slate-600 dark:text-slate-300 font-medium">Checksum Verification:</span>
+                <span className="text-zinc-600 dark:text-zinc-300 font-medium">Checksum Verification:</span>
                 <input
                   type="text"
                   value={checksum}
                   onChange={(e) => setChecksum(e.target.value)}
-                  placeholder="sha-256=abcdef... or md5=..."
-                  className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded font-mono text-[10px]"
+                  placeholder="sha-256=... or md5=..."
+                  className="w-full px-2 py-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded font-mono text-[10px]"
                 />
               </div>
             </div>
@@ -299,28 +310,29 @@ export function Prompt() {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+      <div className="flex items-center justify-between pt-3 border-t border-zinc-100 dark:border-zinc-800/80">
         <button
           onClick={() => handleDecision("cancel")}
           disabled={submitting}
-          className="px-3.5 py-2 border border-rose-200 dark:border-rose-800/60 text-rose-600 dark:text-rose-400 font-semibold hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+          className="text-zinc-400 hover:text-rose-500 text-xs transition-colors"
         >
-          Cancel Download
+          Cancel
         </button>
+
         <div className="flex items-center space-x-2">
           <button
             onClick={() => handleDecision("browser")}
             disabled={submitting}
-            className="px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
           >
             Keep in Browser
           </button>
           <button
             onClick={() => handleDecision("aria2")}
             disabled={submitting}
-            className="px-4 py-2 bg-sky-600 hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center space-x-1.5"
+            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg shadow-xs transition-colors flex items-center space-x-1.5"
           >
-            <span>Download with aria2c</span>
+            <span>Download (aria2c)</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
