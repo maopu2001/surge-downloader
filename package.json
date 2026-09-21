@@ -12,7 +12,8 @@
     "build:native": "node scripts/build-sea.mjs",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
-    "host:register": "node scripts/register-host.mjs"
+    "host:register": "node scripts/register-host.mjs",
+    "package": "node scripts/package-bundle.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.13.9",
