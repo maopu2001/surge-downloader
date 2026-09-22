@@ -4,6 +4,8 @@ import {
   type DownloadProgressPayload,
   type Aria2DownloadOptions,
   type PendingPromptItem,
+  type AwaitingRefreshState,
+  type RefreshPromptItem,
   type SelectFolderResultPayload,
   DEFAULT_SETTINGS,
 } from "@aria2-browser/protocol";
@@ -25,6 +27,9 @@ export class DownloadInterceptor {
   private handledBrowserIds = new Set<number>();
   private pendingSuggests = new Map<number, (suggestion?: chrome.downloads.DownloadFilenameSuggestion) => void>();
   private pendingPrompts = new Map<number, PendingPromptItem>();
+  private awaitingRefresh: AwaitingRefreshState | null = null;
+  private awaitingRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private refreshPrompt: RefreshPromptItem | null = null;
 
   constructor() {
     this.setupListeners();
@@ -70,6 +75,43 @@ export class DownloadInterceptor {
 
   public getBindings(): DownloadBinding[] {
     return Array.from(this.bindings.values());
+  }
+
+  public async syncWithNativeHost(): Promise<void> {
+    try {
+      const res = await nativeBridge.syncDownloads();
+      const activeGids = new Set(res?.activeGids || []);
+
+      let changed = false;
+      const now = Date.now();
+
+      for (const [gid, item] of this.bindings.entries()) {
+        // Skip browser-native downloads
+        if (!gid || gid.startsWith("b-")) continue;
+
+        // If unfinished and missing from aria2 daemon/session
+        if (
+          item.state !== "completed" &&
+          item.state !== "cancelled" &&
+          item.state !== "failed" &&
+          item.state !== "file-missing"
+        ) {
+          if (!activeGids.has(gid)) {
+            item.state = "failed";
+            item.speed = 0;
+            item.errorMessage = "Task not found in session";
+            item.updatedAt = now;
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        await this.saveBindings();
+      }
+    } catch {
+      // ignore
+    }
   }
 
   public async pauseDownload(gid: string): Promise<void> {
@@ -342,17 +384,172 @@ export class DownloadInterceptor {
     }
   }
 
-  public async refreshDownloadUrl(gid: string, newUrl: string): Promise<DownloadBinding> {
+  private async updateBadge(): Promise<void> {
+    try {
+      if (this.refreshPrompt) {
+        await chrome.action.setBadgeText({ text: "WARN" });
+        await chrome.action.setBadgeBackgroundColor({ color: "#f97316" });
+      } else if (this.pendingPrompts.size > 0) {
+        const hasConflict = Array.from(this.pendingPrompts.values()).some((p) => p.hasConflict);
+        await chrome.action.setBadgeText({ text: String(this.pendingPrompts.size) });
+        await chrome.action.setBadgeBackgroundColor({ color: hasConflict ? "#e11d48" : "#0284c7" });
+      } else if (this.awaitingRefresh) {
+        await chrome.action.setBadgeText({ text: "WAIT" });
+        await chrome.action.setBadgeBackgroundColor({ color: "#f59e0b" });
+      } else {
+        await chrome.action.setBadgeText({ text: "" });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  public startAwaitingRefresh(gid: string): { success: boolean; error?: string } {
+    const existing = this.bindings.get(gid);
+    if (!existing) {
+      return { success: false, error: "Task not found" };
+    }
+
+    this.cancelAwaitingRefresh();
+
+    const timeoutSec = this.settings.refreshCaptureTimeoutSeconds || 30;
+    this.awaitingRefresh = {
+      gid,
+      filename: existing.filename,
+      directory: existing.directory,
+      originalUrl: existing.url,
+      startedAt: Date.now(),
+      timeoutSeconds: timeoutSec,
+    };
+
+    this.awaitingRefreshTimer = setTimeout(async () => {
+      if (this.awaitingRefresh?.gid === gid) {
+        const task = this.bindings.get(gid);
+        if (task && (task.state === "error" || task.state === "paused" || task.state === "aria2-active")) {
+          task.state = "error";
+          task.errorMessage = "Refresh link capture timed out. Download marked as failed.";
+          task.speed = 0;
+          await this.saveBindings();
+        }
+        this.cancelAwaitingRefresh();
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: "icons/icon-48.png",
+          title: "Surge — Refresh Link Timed Out",
+          message: `Capture timed out for ${existing.filename}. Task marked as failed.`,
+        });
+      }
+    }, timeoutSec * 1000);
+
+    void this.updateBadge();
+
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/icon-48.png",
+      title: "Surge — Ready to Capture Refresh Link",
+      message: `Click download on the webpage within ${timeoutSec}s to resume '${existing.filename}'.`,
+    });
+
+    return { success: true };
+  }
+
+  public cancelAwaitingRefresh(): void {
+    if (this.awaitingRefreshTimer) {
+      clearTimeout(this.awaitingRefreshTimer);
+      this.awaitingRefreshTimer = null;
+    }
+    this.awaitingRefresh = null;
+    void this.updateBadge();
+  }
+
+  public getAwaitingRefresh(): AwaitingRefreshState | null {
+    return this.awaitingRefresh;
+  }
+
+  public getRefreshPrompt(): RefreshPromptItem | null {
+    return this.refreshPrompt;
+  }
+
+  public async resolveRefreshPrompt(action: "accept" | "cancel"): Promise<void> {
+    if (!this.refreshPrompt) return;
+    const prompt = this.refreshPrompt;
+    const suggest = this.pendingSuggests.get(prompt.browserDownloadId);
+    this.pendingSuggests.delete(prompt.browserDownloadId);
+    this.refreshPrompt = null;
+    this.cancelAwaitingRefresh();
+
+    if (action === "accept") {
+      if (suggest) {
+        try { suggest(); } catch {}
+      }
+      try {
+        await chrome.downloads.cancel(prompt.browserDownloadId);
+        await chrome.downloads.erase({ id: prompt.browserDownloadId });
+      } catch {}
+
+      const headers = await this.collectDownloadHeaders(prompt.newUrl);
+      try {
+        await this.refreshDownloadUrl(prompt.targetGid, prompt.newUrl, headers);
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: "icons/icon-48.png",
+          title: "Surge — Link Refreshed & Resumed",
+          message: `Captured fresh link for ${prompt.targetFilename}. Download resumed in aria2c.`,
+        });
+      } catch (err) {
+        const msg = (err as Error).message;
+        const existing = this.bindings.get(prompt.targetGid);
+        if (existing) {
+          existing.state = "error";
+          existing.errorMessage = `Refresh failed: ${msg}`;
+          await this.saveBindings();
+        }
+      }
+    } else {
+      if (suggest) {
+        try { suggest(); } catch {}
+      }
+      try {
+        await chrome.downloads.cancel(prompt.browserDownloadId);
+        await chrome.downloads.erase({ id: prompt.browserDownloadId });
+      } catch {}
+    }
+    void this.updateBadge();
+  }
+
+  public async refreshDownloadUrl(
+    gid: string,
+    newUrl: string,
+    customHeaders?: {
+      referer?: string;
+      userAgent?: string;
+      cookie?: string;
+      accept?: string;
+      acceptLanguage?: string;
+      customHeaders?: string[];
+    }
+  ): Promise<DownloadBinding> {
     const existing = this.bindings.get(gid);
     if (!existing) {
       throw new Error("Task not found");
     }
 
+    const headers = customHeaders || (await this.collectDownloadHeaders(newUrl, existing.url));
+    const baseOptions = resolveAria2Options(
+      {
+        url: newUrl,
+        filename: existing.filename,
+      },
+      this.settings
+    );
+
     const res = await nativeBridge.refreshDownloadUrl({
       gid,
       newUrl,
       filename: existing.filename,
-      directory: this.settings.downloadDirectory || undefined,
+      directory: existing.directory || this.settings.downloadDirectory || undefined,
+      headers,
+      options: baseOptions,
     });
 
     const activeGid = res.newGid || gid;
@@ -366,6 +563,18 @@ export class DownloadInterceptor {
       this.bindings.delete(gid);
       this.bindings.set(activeGid, existing);
     }
+
+    if (this.awaitingRefresh?.gid === gid) {
+      this.cancelAwaitingRefresh();
+    }
+
+    await chrome.storage.local.set({
+      lastRefreshSuccess: {
+        gid: activeGid,
+        filename: existing.filename,
+        timestamp: Date.now(),
+      },
+    });
 
     await this.saveBindings();
     return existing;
@@ -405,6 +614,9 @@ export class DownloadInterceptor {
   }
 
   public async triggerManualDownload(url: string, customFilename?: string, refererUrl?: string): Promise<void> {
+    if (this.awaitingRefresh) {
+      throw new Error("Cannot add new download while waiting to capture refresh link. Please cancel refresh capture first.");
+    }
     const filename = customFilename || extractCleanFilename(undefined, url) || "download";
     const ext = getFileExtension(filename, url);
     const subDir = resolveSubDirectory(filename, ext, undefined, this.settings.subDirectoryRouting || []);
@@ -429,9 +641,8 @@ export class DownloadInterceptor {
         directory: resolvedDir,
         hasConflict: fileCheck.isCompleted,
       });
+      void this.updateBadge();
       try {
-        await chrome.action.setBadgeText({ text: String(this.pendingPrompts.size) });
-        await chrome.action.setBadgeBackgroundColor({ color: fileCheck.isCompleted ? "#e11d48" : "#0284c7" });
         await chrome.action.openPopup();
       } catch {}
       return;
@@ -447,6 +658,89 @@ export class DownloadInterceptor {
   ): boolean {
     if (this.handledBrowserIds.has(downloadItem.id)) {
       suggest();
+      return false;
+    }
+
+    // 0. Awaiting Refresh Interception
+    if (this.awaitingRefresh) {
+      const target = this.awaitingRefresh;
+      const newUrl = downloadItem.finalUrl || downloadItem.url;
+      const cleanIncomingName = extractCleanFilename(downloadItem.filename, downloadItem.url, downloadItem.finalUrl) || downloadItem.filename;
+
+      let origDomain = "";
+      let newDomain = "";
+      try { origDomain = new URL(target.originalUrl).hostname; } catch {}
+      try { newDomain = new URL(newUrl).hostname; } catch {}
+
+      const domainsMatch = !origDomain || !newDomain || origDomain === newDomain || origDomain.endsWith("." + newDomain) || newDomain.endsWith("." + origDomain);
+
+      if (!domainsMatch) {
+        // Domain mismatch: show warning prompt
+        try {
+          chrome.downloads.pause(downloadItem.id);
+        } catch {
+          // ignore
+        }
+        this.handledBrowserIds.add(downloadItem.id);
+        this.pendingSuggests.set(downloadItem.id, suggest);
+        this.refreshPrompt = {
+          targetGid: target.gid,
+          targetFilename: target.filename,
+          newUrl,
+          newFilename: cleanIncomingName,
+          newDomain,
+          originalDomain: origDomain,
+          browserDownloadId: downloadItem.id,
+        };
+        void this.updateBadge();
+        try {
+          chrome.action.openPopup();
+        } catch {}
+        return true;
+      }
+
+      // Domains match: capture and refresh immediately
+      this.cancelAwaitingRefresh();
+      this.handledBrowserIds.add(downloadItem.id);
+
+      if (suggest) {
+        try { suggest(); } catch {}
+      }
+      try {
+        chrome.downloads.cancel(downloadItem.id);
+        chrome.downloads.erase({ id: downloadItem.id });
+      } catch {}
+
+      void (async () => {
+        try {
+          const headers = await this.collectDownloadHeaders(newUrl, downloadItem.referrer);
+          await this.refreshDownloadUrl(target.gid, newUrl, headers);
+          chrome.notifications.create({
+            type: "basic",
+            iconUrl: "icons/icon-48.png",
+            title: "Surge — Link Refreshed & Resumed",
+            message: `Captured fresh link for ${target.filename}. Download resumed in aria2c.`,
+          });
+          try {
+            await chrome.action.openPopup();
+          } catch {}
+        } catch (err) {
+          const msg = (err as Error).message;
+          const existing = this.bindings.get(target.gid);
+          if (existing) {
+            existing.state = "error";
+            existing.errorMessage = `Refresh failed: ${msg}`;
+            await this.saveBindings();
+          }
+          chrome.notifications.create({
+            type: "basic",
+            iconUrl: "icons/icon-48.png",
+            title: "Surge — Link Refresh Failed",
+            message: `Failed to resume ${target.filename}: ${msg}`,
+          });
+        }
+      })();
+
       return false;
     }
 
@@ -503,11 +797,7 @@ export class DownloadInterceptor {
           hasConflict: fileCheck.isCompleted,
         });
 
-        // Set extension badge so user sees notice on extension icon
-        try {
-          await chrome.action.setBadgeText({ text: String(this.pendingPrompts.size) });
-          await chrome.action.setBadgeBackgroundColor({ color: fileCheck.isCompleted ? "#e11d48" : "#0284c7" });
-        } catch {}
+        void this.updateBadge();
 
         // Open extension popup automatically from menubar!
         try {
@@ -553,9 +843,8 @@ export class DownloadInterceptor {
           hasConflict: true,
         });
 
+        void this.updateBadge();
         try {
-          await chrome.action.setBadgeText({ text: String(this.pendingPrompts.size) });
-          await chrome.action.setBadgeBackgroundColor({ color: "#e11d48" });
           await chrome.action.openPopup();
         } catch {}
         return;
@@ -578,6 +867,71 @@ export class DownloadInterceptor {
     source: "onCreated" | "onDeterminingFilename"
   ): Promise<void> {
     if (this.handledBrowserIds.has(downloadItem.id)) {
+      return;
+    }
+
+    // 0. Awaiting Refresh Interception
+    if (this.awaitingRefresh) {
+      const target = this.awaitingRefresh;
+      const newUrl = downloadItem.finalUrl || downloadItem.url;
+      const cleanIncomingName = extractCleanFilename(downloadItem.filename, downloadItem.url, downloadItem.finalUrl) || downloadItem.filename;
+
+      let origDomain = "";
+      let newDomain = "";
+      try { origDomain = new URL(target.originalUrl).hostname; } catch {}
+      try { newDomain = new URL(newUrl).hostname; } catch {}
+
+      const domainsMatch = !origDomain || !newDomain || origDomain === newDomain || origDomain.endsWith("." + newDomain) || newDomain.endsWith("." + origDomain);
+
+      if (!domainsMatch) {
+        try {
+          await chrome.downloads.pause(downloadItem.id);
+        } catch {}
+        this.handledBrowserIds.add(downloadItem.id);
+        this.refreshPrompt = {
+          targetGid: target.gid,
+          targetFilename: target.filename,
+          newUrl,
+          newFilename: cleanIncomingName,
+          newDomain,
+          originalDomain: origDomain,
+          browserDownloadId: downloadItem.id,
+        };
+        void this.updateBadge();
+        try {
+          await chrome.action.openPopup();
+        } catch {}
+        return;
+      }
+
+      this.cancelAwaitingRefresh();
+      this.handledBrowserIds.add(downloadItem.id);
+      try {
+        await chrome.downloads.cancel(downloadItem.id);
+        await chrome.downloads.erase({ id: downloadItem.id });
+      } catch {}
+
+      try {
+        const headers = await this.collectDownloadHeaders(newUrl, downloadItem.referrer);
+        await this.refreshDownloadUrl(target.gid, newUrl, headers);
+        chrome.notifications.create({
+          type: "basic",
+          iconUrl: "icons/icon-48.png",
+          title: "Surge — Link Refreshed & Resumed",
+          message: `Captured fresh link for ${target.filename}. Download resumed in aria2c.`,
+        });
+        try {
+          await chrome.action.openPopup();
+        } catch {}
+      } catch (err) {
+        const msg = (err as Error).message;
+        const existing = this.bindings.get(target.gid);
+        if (existing) {
+          existing.state = "error";
+          existing.errorMessage = `Refresh failed: ${msg}`;
+          await this.saveBindings();
+        }
+      }
       return;
     }
 
@@ -629,9 +983,8 @@ export class DownloadInterceptor {
         hasConflict: fileCheck.isCompleted,
       });
 
+      void this.updateBadge();
       try {
-        await chrome.action.setBadgeText({ text: String(this.pendingPrompts.size) });
-        await chrome.action.setBadgeBackgroundColor({ color: fileCheck.isCompleted ? "#e11d48" : "#0284c7" });
         await chrome.action.openPopup();
       } catch {}
       return;
@@ -654,13 +1007,7 @@ export class DownloadInterceptor {
     const promptItem = this.pendingPrompts.get(browserId);
     this.pendingPrompts.delete(browserId);
 
-    try {
-      if (this.pendingPrompts.size === 0) {
-        await chrome.action.setBadgeText({ text: "" });
-      } else {
-        await chrome.action.setBadgeText({ text: String(this.pendingPrompts.size) });
-      }
-    } catch {}
+    void this.updateBadge();
 
     if (action === "cancel") {
       if (suggest) {
@@ -750,6 +1097,12 @@ export class DownloadInterceptor {
     customOptions?: Aria2DownloadOptions,
     refererUrl?: string
   ): Promise<{ success: boolean; gid?: string; error?: string }> {
+    if (this.awaitingRefresh) {
+      return {
+        success: false,
+        error: "Cannot add new download while waiting to capture refresh link. Please cancel refresh capture first.",
+      };
+    }
     const cleanName = customFilename || extractCleanFilename(undefined, targetUrl) || "download";
     const targetDir = customDirectory !== undefined ? customDirectory : this.settings.downloadDirectory;
 
@@ -1051,7 +1404,7 @@ export class DownloadInterceptor {
     const now = Date.now();
 
     if (existing) {
-      existing.receivedBytes = progress.completedBytes;
+      existing.receivedBytes = progress.completedBytes > 0 ? progress.completedBytes : existing.receivedBytes;
       existing.totalBytes = progress.totalBytes > 0 ? progress.totalBytes : existing.totalBytes;
       existing.speed = progress.downloadSpeed;
       existing.updatedAt = now;
@@ -1065,7 +1418,7 @@ export class DownloadInterceptor {
         existing.state = "failed";
         existing.errorMessage = progress.errorMessage;
         console.error(`[aria2] Download error for GID=${progress.gid}`, progress.errorMessage);
-      } else if (progress.status === "paused") {
+      } else if (progress.status === "paused" || progress.status === "waiting") {
         existing.state = "paused";
         existing.speed = 0;
       } else if (progress.status === "removed") {
@@ -1074,10 +1427,16 @@ export class DownloadInterceptor {
         existing.state = "aria2-active";
       }
     } else {
+      let initState: DownloadBinding["state"] = "aria2-active";
+      if (progress.status === "complete") initState = "completed";
+      else if (progress.status === "paused" || progress.status === "waiting") initState = "paused";
+      else if (progress.status === "error") initState = "failed";
+      else if (progress.status === "removed") initState = "cancelled";
+
       const newBinding: DownloadBinding = {
         browserId: 0,
         gid: progress.gid,
-        state: progress.status === "complete" ? "completed" : "aria2-active",
+        state: initState,
         url: "",
         filename: `aria2-task-${progress.gid.slice(0, 6)}`,
         totalBytes: progress.totalBytes,

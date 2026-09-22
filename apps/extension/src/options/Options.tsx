@@ -857,6 +857,26 @@ export function Options() {
                       className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg font-mono text-zinc-900 dark:text-zinc-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
+
+                  <div>
+                    <label className="block font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                      Refresh Link Capture Timeout (Seconds)
+                    </label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="300"
+                      value={settings.refreshCaptureTimeoutSeconds || 30}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          refreshCaptureTimeoutSeconds: Math.max(5, parseInt(e.target.value, 10) || 30),
+                        })
+                      }
+                      placeholder="30"
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg font-mono text-zinc-900 dark:text-zinc-100 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
 
                 <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 space-y-2 text-xs">

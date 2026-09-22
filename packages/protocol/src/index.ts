@@ -73,6 +73,7 @@ export const Aria2DownloadOptionsSchema = z.object({
   connectTimeout: z.number().int().min(5).max(120).optional(),
   checkCertificate: z.boolean().optional(),
   subDirectory: z.string().optional(),
+  pause: z.boolean().optional(),
 }).strict().optional();
 
 export type Aria2DownloadOptions = z.infer<typeof Aria2DownloadOptionsSchema>;
@@ -106,6 +107,8 @@ export const DownloadRefreshUrlPayloadSchema = z.object({
   newUrl: z.string(),
   filename: z.string().optional(),
   directory: z.string().optional(),
+  headers: DownloadAddHeadersSchema,
+  options: Aria2DownloadOptionsSchema,
 });
 export type DownloadRefreshUrlPayload = z.infer<typeof DownloadRefreshUrlPayloadSchema>;
 
@@ -187,6 +190,25 @@ export interface PendingPromptItem {
   size: number;
   directory: string;
   hasConflict?: boolean;
+}
+
+export interface AwaitingRefreshState {
+  gid: string;
+  filename: string;
+  directory?: string;
+  originalUrl: string;
+  startedAt: number;
+  timeoutSeconds: number;
+}
+
+export interface RefreshPromptItem {
+  targetGid: string;
+  targetFilename: string;
+  newUrl: string;
+  newFilename: string;
+  newDomain: string;
+  originalDomain: string;
+  browserDownloadId: number;
 }
 
 export const DownloadSyncPayloadSchema = z.object({});
@@ -291,6 +313,7 @@ export interface ExtensionSettings {
   defaultCheckCertificate: boolean;
   autoFileRenaming: boolean;
   allowOverwrite: boolean;
+  refreshCaptureTimeoutSeconds: number;
   subDirectoryRouting: SubDirectoryRoute[];
 }
 
@@ -316,6 +339,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   defaultCheckCertificate: true,
   autoFileRenaming: true,
   allowOverwrite: false,
+  refreshCaptureTimeoutSeconds: 30,
   subDirectoryRouting: [
     { pattern: "iso,dmg,img,vhd", subDirectory: "DiskImages" },
     { pattern: "mp4,mkv,avi,flv,mov,webm,video/*", subDirectory: "Videos" },

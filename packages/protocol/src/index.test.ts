@@ -5,6 +5,7 @@ import {
   ErrorCode,
   EnvelopeSchema,
   DownloadAddPayloadSchema,
+  DownloadRefreshUrlPayloadSchema,
 } from "./index.js";
 
 describe("Protocol Envelopes", () => {
@@ -48,6 +49,7 @@ describe("Protocol Envelopes", () => {
         continueDownload: true,
         checkCertificate: true,
         subDirectory: "ISOs",
+        pause: false,
       },
     });
     expect(valid.success).toBe(true);
@@ -67,5 +69,24 @@ describe("Protocol Envelopes", () => {
       },
     });
     expect(invalidChecksum.success).toBe(false);
+  });
+
+  it("validates download.refreshUrl payload with headers and options", () => {
+    const valid = DownloadRefreshUrlPayloadSchema.safeParse({
+      gid: "gid-123",
+      newUrl: "https://example.com/refreshed-file.iso",
+      filename: "refreshed-file.iso",
+      directory: "/Downloads",
+      headers: {
+        cookie: "auth_token=abc",
+        referer: "https://example.com/download-page",
+        userAgent: "Mozilla/5.0",
+      },
+      options: {
+        split: 4,
+        allowOverwrite: true,
+      },
+    });
+    expect(valid.success).toBe(true);
   });
 });

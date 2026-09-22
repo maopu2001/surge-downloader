@@ -64,3 +64,6 @@ Thumbs.db
 *.xpi
 *.zip
 release/
+
+
+graphify-out

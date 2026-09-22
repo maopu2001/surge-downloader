@@ -1,5 +1,9 @@
 import React, { useEffect, useState, useMemo } from "react";
-import type { DownloadBinding } from "@aria2-browser/protocol";
+import type {
+  DownloadBinding,
+  AwaitingRefreshState,
+  RefreshPromptItem,
+} from "@aria2-browser/protocol";
 import { formatBytes, formatSpeed, formatEta } from "../utils/format.js";
 import { useSystemTheme } from "../utils/useTheme.js";
 import { FileIcon } from "../utils/FileIcon.js";
@@ -21,6 +25,8 @@ import {
   AlertCircle,
   Clock,
   ExternalLink,
+  Radio,
+  Activity,
 } from "lucide-react";
 
 type FilterTab = "all" | "active" | "completed" | "paused" | "failed";
@@ -44,6 +50,13 @@ export function Dashboard() {
     url: string;
     filename: string;
   } | null>(null);
+  const [refreshModalTab, setRefreshModalTab] = useState<"capture" | "paste">("capture");
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [awaitingRefresh, setAwaitingRefresh] = useState<AwaitingRefreshState | null>(null);
+  const [refreshPrompt, setRefreshPrompt] = useState<RefreshPromptItem | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [refreshSuccessMessage, setRefreshSuccessMessage] = useState<string | null>(null);
+  const [lastHandledSuccessTs, setLastHandledSuccessTs] = useState<number>(0);
 
   const refresh = () => {
     chrome.runtime.sendMessage({ type: "GET_DOWNLOADS" }, (res) => {
@@ -60,13 +73,33 @@ export function Dashboard() {
         setIsConnected(false);
       }
     });
+
+    chrome.runtime.sendMessage({ type: "GET_REFRESH_STATE" }, (res) => {
+      if (res?.success && res.data) {
+        setAwaitingRefresh(res.data.awaitingRefresh || null);
+        setRefreshPrompt(res.data.refreshPrompt || null);
+      }
+    });
+
+    chrome.storage.local.get("lastRefreshSuccess", (res) => {
+      const data = res?.lastRefreshSuccess;
+      if (data && data.timestamp > lastHandledSuccessTs && Date.now() - data.timestamp < 5000) {
+        setLastHandledSuccessTs(data.timestamp);
+        setRefreshSuccessMessage(`Link refreshed & resumed for ${data.filename || "task"}!`);
+        setTimeout(() => setRefreshSuccessMessage(null), 4000);
+      }
+    });
   };
 
   useEffect(() => {
     refresh();
     const interval = setInterval(refresh, 1500);
-    return () => clearInterval(interval);
-  }, []);
+    const ticker = setInterval(() => setNow(Date.now()), 500);
+    return () => {
+      clearInterval(interval);
+      clearInterval(ticker);
+    };
+  }, [lastHandledSuccessTs]);
 
   const handlePause = (gid: string) => {
     setDownloads((prev) =>
@@ -103,13 +136,47 @@ export function Dashboard() {
   };
 
   const handleRefreshUrl = (gid: string, newUrl: string) => {
-    setDownloads((prev) =>
-      prev.map((d) =>
-        d.gid === gid ? { ...d, url: newUrl, state: "aria2-active" } : d,
-      ),
-    );
+    setRefreshError(null);
     chrome.runtime.sendMessage(
       { type: "REFRESH_DOWNLOAD_URL", payload: { gid, newUrl } },
+      (res) => {
+        if (res?.success) {
+          setRefreshingLink(null);
+          setRefreshSuccessMessage("Download link refreshed & resumed successfully!");
+          setTimeout(() => setRefreshSuccessMessage(null), 4000);
+          refresh();
+        } else {
+          setRefreshModalTab("capture");
+          setRefreshError(
+            res?.error
+              ? `Pasted link failed: ${res.error}. Defaulted to Browser Interception mode.`
+              : "Pasted link failed. Defaulted to Browser Interception mode."
+          );
+        }
+      },
+    );
+  };
+
+  const handleStartRefreshCapture = (gid: string) => {
+    chrome.runtime.sendMessage(
+      { type: "START_REFRESH_CAPTURE", payload: { gid } },
+      () => {
+        setRefreshingLink(null);
+        refresh();
+      },
+    );
+  };
+
+  const handleCancelRefreshCapture = () => {
+    chrome.runtime.sendMessage(
+      { type: "CANCEL_REFRESH_CAPTURE" },
+      () => refresh(),
+    );
+  };
+
+  const handleResolveRefreshPrompt = (action: "accept" | "cancel") => {
+    chrome.runtime.sendMessage(
+      { type: "RESOLVE_REFRESH_PROMPT", payload: { action } },
       () => refresh(),
     );
   };
@@ -263,6 +330,10 @@ export function Dashboard() {
     }
   };
 
+  const remainingSeconds = awaitingRefresh
+    ? Math.max(0, Math.ceil((awaitingRefresh.startedAt + awaitingRefresh.timeoutSeconds * 1000 - now) / 1000))
+    : 0;
+
   return (
     <div className="min-h-screen bg-[#fafafa] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 font-sans antialiased flex flex-col">
       {/* Top Navbar */}
@@ -352,6 +423,24 @@ export function Dashboard() {
           </div>
         </div>
       </header>
+
+      {/* Global Refresh Success Toast Banner */}
+      {refreshSuccessMessage && (
+        <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-6 py-2 animate-in fade-in duration-200">
+          <div className="max-w-6xl mx-auto flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400">
+            <div className="flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+              <span className="font-medium">{refreshSuccessMessage}</span>
+            </div>
+            <button
+              onClick={() => setRefreshSuccessMessage(null)}
+              className="text-emerald-500 hover:text-emerald-700 p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Container */}
       <main className="max-w-6xl mx-auto px-6 py-6 flex-1 w-full">
@@ -589,6 +678,21 @@ export function Dashboard() {
                                 <Play className="w-3.5 h-3.5" />
                               </button>
                               <button
+                                onClick={() => {
+                                  setRefreshingLink({
+                                    gid: item.gid,
+                                    url: item.url,
+                                    filename: item.filename,
+                                  });
+                                  setRefreshModalTab("capture");
+                                  setRefreshError(null);
+                                }}
+                                className="p-1.5 text-zinc-500 hover:text-blue-500 dark:hover:text-blue-400 rounded hover:bg-white dark:hover:bg-zinc-800 transition-colors"
+                                title="Refresh Download Link"
+                              >
+                                <Link2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
                                 onClick={() => handleCancel(item.gid)}
                                 className="p-1.5 text-zinc-500 hover:text-rose-500 dark:hover:text-rose-400 rounded hover:bg-white dark:hover:bg-zinc-800 transition-colors"
                                 title="Cancel"
@@ -600,15 +704,17 @@ export function Dashboard() {
 
                           {(isFailed || isCompleted) && (
                             <>
-                              {isFailed && (
+                              {isFailed && item.errorMessage !== "Task not found in session" && (
                                 <button
-                                  onClick={() =>
+                                  onClick={() => {
                                     setRefreshingLink({
                                       gid: item.gid,
                                       url: item.url,
                                       filename: item.filename,
-                                    })
-                                  }
+                                    });
+                                    setRefreshModalTab("capture");
+                                    setRefreshError(null);
+                                  }}
                                   className="p-1.5 text-zinc-500 hover:text-blue-500 dark:hover:text-blue-400 rounded hover:bg-white dark:hover:bg-zinc-800 transition-colors"
                                   title="Refresh Download Link"
                                 >
@@ -691,6 +797,28 @@ export function Dashboard() {
                       </div>
                     </div>
                   </div>
+
+                  {awaitingRefresh?.gid === item.gid && (
+                    <div className="mt-2.5 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center justify-between text-xs text-amber-600 dark:text-amber-400">
+                      <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                        <Radio className="w-4 h-4 animate-pulse text-amber-500 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <span className="font-semibold text-xs">
+                            Listening for browser download ({remainingSeconds}s remaining)
+                          </span>
+                          <span className="text-zinc-500 dark:text-zinc-400 ml-1.5 truncate">
+                            • Click download button on original page to capture and resume
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleCancelRefreshCapture}
+                        className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 rounded-md text-xs font-medium flex-shrink-0 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -701,64 +829,190 @@ export function Dashboard() {
       {/* Footer */}
       <Footer maxWidth="max-w-6xl" />
 
+      {/* Domain Mismatch Warning Dialog */}
+      {refreshPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#141417] border border-amber-500/30 rounded-xl p-5 max-w-lg w-full shadow-modal space-y-3">
+            <div className="flex items-center space-x-2.5 text-amber-600 dark:text-amber-400">
+              <div className="p-1.5 bg-amber-50 dark:bg-amber-950/50 rounded-lg">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <h3 className="font-semibold text-sm">Domain Mismatch Warning</h3>
+            </div>
+            <p className="text-xs text-zinc-600 dark:text-zinc-300">
+              Captured link domain (<span className="font-mono font-bold text-amber-600 dark:text-amber-400">{refreshPrompt.newDomain}</span>) is different from the original task domain (<span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{refreshPrompt.originalDomain}</span>).
+            </p>
+            <div className="p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-xs space-y-1 font-mono">
+              <p className="text-zinc-500 truncate" title={refreshPrompt.targetFilename}>
+                Target Task: {refreshPrompt.targetFilename}
+              </p>
+              <p className="text-zinc-500 truncate" title={refreshPrompt.newUrl}>
+                New URL: {refreshPrompt.newUrl}
+              </p>
+            </div>
+            <p className="text-xs text-zinc-500">
+              Do you want to accept this link to refresh and resume the download?
+            </p>
+            <div className="pt-2 flex justify-end space-x-2">
+              <button
+                onClick={() => handleResolveRefreshPrompt("cancel")}
+                className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 px-3 py-1.5"
+              >
+                Reject & Cancel
+              </button>
+              <button
+                onClick={() => handleResolveRefreshPrompt("accept")}
+                className="text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 px-4 py-1.5 rounded-lg transition-colors"
+              >
+                Accept & Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Refresh Download Link Dialog */}
       {refreshingLink && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#141417] border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 max-w-lg w-full shadow-modal space-y-3">
-            <div className="flex items-center space-x-2.5">
-              <div className="p-1.5 bg-blue-50 dark:bg-blue-950/50 rounded-lg text-blue-600 dark:text-blue-400">
-                <Link2 className="w-4 h-4" />
+          <div className="bg-white dark:bg-[#141417] border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 max-w-lg w-full shadow-modal space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-1.5 bg-blue-50 dark:bg-blue-950/50 rounded-lg text-blue-600 dark:text-blue-400">
+                  <Link2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-zinc-900 dark:text-white">
+                    Refresh Download Link
+                  </h3>
+                  <p className="text-xs text-zinc-500">
+                    Update link for expired tokens or capture fresh stream from browser.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-sm text-zinc-900 dark:text-white">
-                  Refresh Download Link
-                </h3>
-                <p className="text-xs text-zinc-500">
-                  Update the download link for expired CDN tokens or relocated
-                  mirrors.
-                </p>
-              </div>
+              <button
+                onClick={() => {
+                  setRefreshingLink(null);
+                  setRefreshError(null);
+                }}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <div className="p-2.5 bg-zinc-50 dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 text-xs font-mono text-zinc-700 dark:text-zinc-300 truncate">
               {refreshingLink.filename}
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                New URL
-              </label>
-              <textarea
-                rows={3}
-                value={refreshingLink.url}
-                onChange={(e) =>
-                  setRefreshingLink({ ...refreshingLink, url: e.target.value })
-                }
-                placeholder="Paste fresh URL here..."
-                className="w-full text-xs p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-mono resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="pt-2 flex justify-end space-x-2">
+            {/* Tab switch */}
+            <div className="flex rounded-lg bg-zinc-100 dark:bg-zinc-800 p-0.5 text-xs font-medium">
               <button
-                onClick={() => setRefreshingLink(null)}
-                className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 px-3 py-1.5"
+                onClick={() => {
+                  setRefreshModalTab("capture");
+                  setRefreshError(null);
+                }}
+                className={`flex-1 py-1.5 rounded-md transition-all ${
+                  refreshModalTab === "capture"
+                    ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-xs"
+                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                }`}
               >
-                Cancel
+                1. Intercept Browser (Default)
               </button>
               <button
                 onClick={() => {
-                  handleRefreshUrl(
-                    refreshingLink.gid,
-                    refreshingLink.url.trim(),
-                  );
-                  setRefreshingLink(null);
+                  setRefreshModalTab("paste");
+                  setRefreshError(null);
                 }}
-                className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg transition-colors"
+                className={`flex-1 py-1.5 rounded-md transition-all ${
+                  refreshModalTab === "paste"
+                    ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-xs"
+                    : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                }`}
               >
-                Update & Resume
+                2. Direct Paste Link
               </button>
             </div>
+
+            {refreshError && (
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-700 dark:text-amber-300 space-y-0.5">
+                <p className="flex items-center space-x-1.5 font-medium">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
+                  <span>{refreshError}</span>
+                </p>
+              </div>
+            )}
+
+            {refreshModalTab === "capture" ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-blue-500/5 dark:bg-blue-500/10 border border-blue-500/20 rounded-lg space-y-1.5 text-xs text-zinc-600 dark:text-zinc-300">
+                  <p className="font-semibold text-blue-600 dark:text-blue-400 flex items-center space-x-1.5">
+                    <Radio className="w-3.5 h-3.5" />
+                    <span>How Browser Interception Mode Works:</span>
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1 text-zinc-500 dark:text-zinc-400 text-xs pl-1">
+                    <li>Click <strong>Start Capture Mode</strong> below.</li>
+                    <li>Go back to the website where the download originated.</li>
+                    <li>Click the download button again.</li>
+                    <li>Surge will intercept the fresh URL + cookies, cancel browser download, and resume this task.</li>
+                  </ol>
+                </div>
+
+                <div className="pt-2 flex justify-end space-x-2">
+                  <button
+                    onClick={() => {
+                      setRefreshingLink(null);
+                      setRefreshError(null);
+                    }}
+                    className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 px-3 py-1.5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleStartRefreshCapture(refreshingLink.gid)}
+                    className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg transition-colors"
+                  >
+                    Start Capture Mode
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                    New URL
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={refreshingLink.url}
+                    onChange={(e) => {
+                      setRefreshingLink({ ...refreshingLink, url: e.target.value });
+                      setRefreshError(null);
+                    }}
+                    placeholder="Paste fresh URL here..."
+                    className="w-full text-xs p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-mono resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end space-x-2">
+                  <button
+                    onClick={() => {
+                      setRefreshingLink(null);
+                      setRefreshError(null);
+                    }}
+                    className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 px-3 py-1.5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleRefreshUrl(refreshingLink.gid, refreshingLink.url.trim())}
+                    className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg transition-colors"
+                  >
+                    Update & Resume
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

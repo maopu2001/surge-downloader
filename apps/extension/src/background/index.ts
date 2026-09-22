@@ -6,7 +6,7 @@ async function startup(): Promise<void> {
 
   // Try to sync with native host on wake up
   try {
-    await nativeBridge.syncDownloads();
+    await downloadInterceptor.syncWithNativeHost();
   } catch {
     // Native host may not be running yet until requested
   }
@@ -120,6 +120,37 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return true;
     }
 
+    case "START_REFRESH_CAPTURE": {
+      const result = downloadInterceptor.startAwaitingRefresh(payload.gid);
+      sendResponse(result);
+      return false;
+    }
+
+    case "CANCEL_REFRESH_CAPTURE": {
+      downloadInterceptor.cancelAwaitingRefresh();
+      sendResponse({ success: true });
+      return false;
+    }
+
+    case "GET_REFRESH_STATE": {
+      sendResponse({
+        success: true,
+        data: {
+          awaitingRefresh: downloadInterceptor.getAwaitingRefresh(),
+          refreshPrompt: downloadInterceptor.getRefreshPrompt(),
+        },
+      });
+      return false;
+    }
+
+    case "RESOLVE_REFRESH_PROMPT": {
+      downloadInterceptor
+        .resolveRefreshPrompt(payload.action)
+        .then(() => sendResponse({ success: true }))
+        .catch((err) => sendResponse({ success: false, error: err.message }));
+      return true;
+    }
+
     case "DOWNLOAD_IN_BROWSER": {
       downloadInterceptor
         .downloadInBrowser(payload.url, payload.filename)
@@ -137,8 +168,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     case "SYNC_DOWNLOADS": {
-      nativeBridge
-        .syncDownloads()
+      downloadInterceptor
+        .syncWithNativeHost()
         .then(() => sendResponse({ success: true }))
         .catch((err) => sendResponse({ success: false, error: err.message }));
       return true;

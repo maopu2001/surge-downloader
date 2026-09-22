@@ -40,7 +40,7 @@ export class Aria2RpcClient {
     this.rpcUrl = `http://127.0.0.1:${port}/jsonrpc`;
   }
 
-  private async callRpc<T>(method: string, params: unknown[] = []): Promise<T> {
+  private async callRpc<T>(method: string, params: unknown[] = [], timeoutMs = 5000): Promise<T> {
     const authParams: unknown[] = this.secretToken
       ? [`token:${this.secretToken}`, ...params]
       : params;
@@ -52,30 +52,38 @@ export class Aria2RpcClient {
       params: authParams,
     };
 
-    const response = await fetch(this.rpcUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    if (!response.ok) {
-      throw new Error(`Aria2 RPC HTTP error: ${response.status} ${response.statusText}`);
+    try {
+      const response = await fetch(this.rpcUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Aria2 RPC HTTP error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = (await response.json()) as {
+        jsonrpc: string;
+        id: string;
+        result?: T;
+        error?: { code: number; message: string };
+      };
+
+      if (data.error) {
+        throw new Error(`Aria2 RPC Error (${data.error.code}): ${data.error.message}`);
+      }
+
+      return data.result as T;
+    } finally {
+      clearTimeout(timer);
     }
-
-    const data = (await response.json()) as {
-      jsonrpc: string;
-      id: string;
-      result?: T;
-      error?: { code: number; message: string };
-    };
-
-    if (data.error) {
-      throw new Error(`Aria2 RPC Error (${data.error.code}): ${data.error.message}`);
-    }
-
-    return data.result as T;
   }
 
   public async getVersion(): Promise<Aria2VersionResult> {
@@ -166,5 +174,13 @@ export class Aria2RpcClient {
 
   public async tellStopped(offset = 0, num = 100): Promise<Aria2DownloadStatus[]> {
     return this.callRpc<Aria2DownloadStatus[]>("aria2.tellStopped", [offset, num]);
+  }
+
+  public async saveSession(timeoutMs = 400): Promise<string> {
+    return this.callRpc<string>("aria2.saveSession", [], timeoutMs);
+  }
+
+  public async shutdown(timeoutMs = 400): Promise<string> {
+    return this.callRpc<string>("aria2.shutdown", [], timeoutMs);
   }
 }

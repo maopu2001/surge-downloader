@@ -1,11 +1,40 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Aria2RpcClient } from "./client.js";
 
 export interface Aria2DaemonOptions {
   port?: number;
   secretToken?: string;
   executablePath?: string;
+  sessionPath?: string;
+}
+
+export function getDefaultSessionPath(customBaseDir?: string): string {
+  try {
+    const base = customBaseDir || os.homedir();
+    const dir = path.join(base, ".aria2-browser");
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const sessionFile = path.join(dir, "session.txt");
+    if (!fs.existsSync(sessionFile)) {
+      fs.writeFileSync(sessionFile, "", { encoding: "utf8" });
+    }
+    return sessionFile;
+  } catch {
+    const tmpDir = path.join(os.tmpdir(), "aria2-browser");
+    if (!fs.existsSync(tmpDir)) {
+      fs.mkdirSync(tmpDir, { recursive: true });
+    }
+    const sessionFile = path.join(tmpDir, "session.txt");
+    if (!fs.existsSync(sessionFile)) {
+      fs.writeFileSync(sessionFile, "", { encoding: "utf8" });
+    }
+    return sessionFile;
+  }
 }
 
 export class Aria2DaemonManager {
@@ -13,11 +42,13 @@ export class Aria2DaemonManager {
   private secretToken: string;
   private port: number;
   private client: Aria2RpcClient;
+  private sessionPath: string;
   private spawnedByUs = false;
 
   constructor(options: Aria2DaemonOptions = {}) {
     this.port = options.port || 6800;
     this.secretToken = options.secretToken || crypto.randomBytes(32).toString("hex");
+    this.sessionPath = options.sessionPath || getDefaultSessionPath();
     this.client = new Aria2RpcClient(this.port, this.secretToken);
   }
 
@@ -67,11 +98,8 @@ export class Aria2DaemonManager {
         return info;
       } catch (err) {
         lastError = err as Error;
-        if ((err as Error).message.includes("Address already in use")) {
-          // Port collision, try next port
-          continue;
-        }
-        throw err;
+        // Port collision or spawn failure on port p, try next port
+        continue;
       }
     }
 
@@ -87,6 +115,8 @@ export class Aria2DaemonManager {
       this.client.setSecretToken(this.secretToken);
     }
 
+    const sessionFile = this.sessionPath || getDefaultSessionPath();
+
     const args = [
       "--enable-rpc=true",
       "--rpc-listen-all=false",
@@ -96,6 +126,10 @@ export class Aria2DaemonManager {
       "--allow-overwrite=false",
       "--auto-file-renaming=true",
       "--conditional-get=true",
+      `--input-file=${sessionFile}`,
+      `--save-session=${sessionFile}`,
+      "--save-session-interval=10",
+      "--auto-save-interval=10",
     ];
 
     const extendedPath = [
@@ -120,6 +154,20 @@ export class Aria2DaemonManager {
 
         this.childProcess = proc;
         this.spawnedByUs = true;
+        let settled = false;
+
+        const cleanupHandler = () => {
+          if (this.childProcess && this.spawnedByUs && this.childProcess.pid) {
+            try {
+              process.kill(this.childProcess.pid, "SIGINT");
+            } catch {
+              try {
+                this.childProcess.kill("SIGTERM");
+              } catch {}
+            }
+          }
+        };
+        process.once("exit", cleanupHandler);
 
         let stderrOutput = "";
         proc.stderr?.on("data", (chunk: Buffer) => {
@@ -127,13 +175,20 @@ export class Aria2DaemonManager {
         });
 
         proc.on("error", (err) => {
-          reject(new Error(`Failed to spawn aria2c: ${err.message}`));
+          if (!settled) {
+            settled = true;
+            this.childProcess = null;
+            reject(new Error(`Failed to spawn aria2c: ${err.message}`));
+          }
         });
 
         proc.on("exit", (code, signal) => {
-          this.childProcess = null;
-          const cleanErr = stderrOutput.trim() || `exit code: ${code}, signal: ${signal}`;
-          reject(new Error(`aria2c exited (${cleanErr})`));
+          if (!settled) {
+            settled = true;
+            this.childProcess = null;
+            const cleanErr = stderrOutput.trim() || `exit code: ${code}, signal: ${signal}`;
+            reject(new Error(`aria2c exited (${cleanErr})`));
+          }
         });
 
         const startTime = Date.now();
@@ -141,7 +196,9 @@ export class Aria2DaemonManager {
         const testClient = new Aria2RpcClient(port, this.secretToken);
 
         const checkReadiness = async () => {
+          if (settled) return;
           if (Date.now() - startTime > timeoutMs) {
+            settled = true;
             this.stop();
             reject(new Error(`Timeout waiting for aria2c RPC on port ${port}`));
             return;
@@ -149,13 +206,18 @@ export class Aria2DaemonManager {
 
           try {
             const ver = await testClient.getVersion();
-            resolve({ version: ver.version, port });
+            if (!settled) {
+              settled = true;
+              resolve({ version: ver.version, port });
+            }
           } catch {
-            setTimeout(checkReadiness, 150);
+            if (!settled) {
+              setTimeout(() => void checkReadiness(), 150);
+            }
           }
         };
 
-        setTimeout(checkReadiness, 100);
+        setTimeout(() => void checkReadiness(), 100);
       } catch (err) {
         reject(err);
       }
@@ -164,6 +226,13 @@ export class Aria2DaemonManager {
 
   public stop(): void {
     if (this.childProcess && this.spawnedByUs) {
+      if (this.childProcess.pid) {
+        try {
+          process.kill(this.childProcess.pid, "SIGINT");
+        } catch {
+          // ignore
+        }
+      }
       try {
         this.childProcess.kill("SIGTERM");
       } catch {

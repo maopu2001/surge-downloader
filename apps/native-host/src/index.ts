@@ -274,6 +274,7 @@ async function handleMessage(rawMessage: unknown): Promise<void> {
         dir: targetDir,
         "auto-file-renaming": "false",
         "allow-overwrite": "false",
+        pause: payloadOptions?.pause !== undefined ? String(payloadOptions.pause) : "false",
       };
       if (sanitizedOut) {
         options.out = sanitizedOut;
@@ -510,7 +511,7 @@ async function handleMessage(rawMessage: unknown): Promise<void> {
         return;
       }
 
-      const { gid, newUrl, filename, directory } = parsed.data;
+      const { gid, newUrl, filename, directory, headers, options: payloadOptions } = parsed.data;
       const urlCheck = validateUrl(newUrl);
       if (!urlCheck.valid) {
         sendResponse(
@@ -527,20 +528,31 @@ async function handleMessage(rawMessage: unknown): Promise<void> {
       let newGid = gid;
       let changedInPlace = false;
 
-      // 1. Try to change URI in-place if task is still active/paused in aria2c
+      // 1. Try to change URI in-place if task is active/paused/waiting in aria2c
       try {
-        await client.changeUri(gid, 1, [], [newUrl]);
-        try {
-          await client.unpause(gid);
-        } catch {
-          // ignore
+        const status = await client.tellStatus(gid);
+        if (status.status === "active" || status.status === "waiting" || status.status === "paused") {
+          if (status.status === "active") {
+            try {
+              await client.pause(gid);
+            } catch {
+              // ignore
+            }
+          }
+          const oldUris = status.files?.[0]?.uris?.map((u) => u.uri) || [];
+          await client.changeUri(gid, 1, oldUris, [newUrl]);
+          try {
+            await client.unpause(gid);
+          } catch {
+            // ignore
+          }
+          changedInPlace = true;
         }
-        changedInPlace = true;
       } catch {
         changedInPlace = false;
       }
 
-      // 2. If task was stopped or changeUri rejected: re-add with continue: "true"
+      // 2. If task was stopped or changeUri rejected: re-add with continue: "true" and full headers & options
       if (!changedInPlace) {
         try {
           const dirCheck = sanitizeDirectory(directory);
@@ -562,10 +574,48 @@ async function handleMessage(rawMessage: unknown): Promise<void> {
             continue: "true",
             "auto-file-renaming": "false",
             "allow-overwrite": "true",
+            pause: payloadOptions?.pause !== undefined ? String(payloadOptions.pause) : "false",
           };
           if (targetOut) {
             options.out = targetOut;
           }
+
+          // Map Aria2 tuning options
+          if (payloadOptions) {
+            if (payloadOptions.split) options.split = String(payloadOptions.split);
+            if (payloadOptions.maxConnectionPerServer) options["max-connection-per-server"] = String(payloadOptions.maxConnectionPerServer);
+            if (payloadOptions.minSplitSize) options["min-split-size"] = payloadOptions.minSplitSize;
+            if (payloadOptions.maxDownloadLimit && payloadOptions.maxDownloadLimit !== "0") options["max-download-limit"] = payloadOptions.maxDownloadLimit;
+            if (payloadOptions.lowestSpeedLimit) options["lowest-speed-limit"] = payloadOptions.lowestSpeedLimit;
+            if (payloadOptions.allProxy) options["all-proxy"] = payloadOptions.allProxy;
+            if (payloadOptions.checksum) options.checksum = payloadOptions.checksum;
+            if (payloadOptions.maxTries) options["max-tries"] = String(payloadOptions.maxTries);
+            if (payloadOptions.retryWait) options["retry-wait"] = String(payloadOptions.retryWait);
+            if (payloadOptions.timeout) options.timeout = String(payloadOptions.timeout);
+            if (payloadOptions.connectTimeout) options["connect-timeout"] = String(payloadOptions.connectTimeout);
+            if (payloadOptions.checkCertificate !== undefined) options["check-certificate"] = String(payloadOptions.checkCertificate);
+          }
+
+          const headerList: string[] = [];
+          if (headers?.userAgent) headerList.push(`User-Agent: ${headers.userAgent}`);
+          if (headers?.referer) headerList.push(`Referer: ${headers.referer}`);
+          if (headers?.cookie) headerList.push(`Cookie: ${headers.cookie}`);
+          if (headers?.accept) headerList.push(`Accept: ${headers.accept}`);
+          if (headers?.acceptLanguage) headerList.push(`Accept-Language: ${headers.acceptLanguage}`);
+          if (headers?.secChUa) headerList.push(`Sec-Ch-Ua: ${headers.secChUa}`);
+          if (headers?.customHeaders && Array.isArray(headers.customHeaders)) {
+            for (const h of headers.customHeaders) {
+              if (h && typeof h === "string" && h.includes(":")) {
+                headerList.push(h);
+              }
+            }
+          }
+          if (headerList.length > 0) {
+            options.header = headerList;
+          }
+
+          // Clean up old stopped task result from aria2 memory
+          await client.removeDownloadResult(gid).catch(() => {});
 
           newGid = await client.addUri([newUrl], options);
         } catch (err) {
@@ -615,16 +665,21 @@ async function handleMessage(rawMessage: unknown): Promise<void> {
         const client = daemon.getClient();
         const [active, waiting, stopped] = await Promise.all([
           client.tellActive(),
-          client.tellWaiting(0, 50),
-          client.tellStopped(0, 50),
+          client.tellWaiting(0, 100),
+          client.tellStopped(0, 100),
         ]);
 
         const allTasks = [...active, ...waiting, ...stopped];
         for (const task of allTasks) {
           sendResponse(
-            createEnvelope("download.progress", normalizeProgress(task), requestId)
+            createEnvelope("download.progress", normalizeProgress(task))
           );
         }
+
+        const activeGids = allTasks.map((t) => t.gid);
+        sendResponse(
+          createEnvelope("download.synced", { activeGids }, requestId)
+        );
       } catch (err) {
         sendResponse(
           createErrorEnvelope(
@@ -783,13 +838,42 @@ reader.on("error", (err) => {
   );
 });
 
-function cleanupAndExit(): void {
+let isCleaningUp = false;
+
+async function cleanupAndExit(): Promise<void> {
+  if (isCleaningUp) return;
+  isCleaningUp = true;
   stopPolling();
+  try {
+    await Promise.race([
+      daemon.getClient().saveSession(250),
+      new Promise((resolve) => setTimeout(resolve, 300)),
+    ]);
+  } catch {
+    // Daemon might not be running or already closed
+  }
   daemon.stop();
   process.exit(0);
 }
 
-reader.on("end", cleanupAndExit);
-reader.on("close", cleanupAndExit);
-process.on("SIGINT", cleanupAndExit);
-process.on("SIGTERM", cleanupAndExit);
+reader.on("end", () => {
+  void cleanupAndExit();
+});
+reader.on("close", () => {
+  void cleanupAndExit();
+});
+process.stdin.on("end", () => {
+  void cleanupAndExit();
+});
+process.stdin.on("close", () => {
+  void cleanupAndExit();
+});
+process.stdin.on("error", () => {
+  void cleanupAndExit();
+});
+process.on("SIGINT", () => {
+  void cleanupAndExit();
+});
+process.on("SIGTERM", () => {
+  void cleanupAndExit();
+});

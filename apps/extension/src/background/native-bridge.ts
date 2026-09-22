@@ -227,8 +227,8 @@ export class NativeBridge {
     await this.sendRequest("download.resumeAll", {});
   }
 
-  public async syncDownloads(): Promise<void> {
-    await this.sendRequest("download.sync", {});
+  public async syncDownloads(): Promise<{ activeGids: string[] }> {
+    return await this.sendRequest<{ activeGids: string[] }>("download.sync", {});
   }
 
   public disconnect(): void {
