@@ -40,7 +40,7 @@ Local Disk
 
 ## 📦 Quick Installation (1-Click Bundle)
 
-1. Download **`surge-v1.0.0-installer.zip`** or the latest release from [Releases](https://github.com/maopu2001/downloader/releases).
+1. Download **`surge-v1.1.0-installer.zip`** or the latest release from [Releases](https://github.com/maopu2001/downloader/releases).
 2. Extract the archive.
 3. Run the installer:
    * **macOS / Linux**: `./setup.sh`
@@ -79,7 +79,7 @@ pnpm run build
 pnpm run package
 ```
 
-The unified installer archive will be generated in `release/surge-v1.0.0-installer.zip`.
+The unified installer archive will be generated in `release/surge-v1.1.0-installer.zip`.
 
 ---
 

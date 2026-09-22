@@ -176,6 +176,7 @@ fs.writeFileSync(path.join(bundleDir, "README.md"), clientReadme);
 // 8. Package into .zip archive
 console.log("Step 5: Creating zip archive...");
 try {
+  execSync(`find "${bundleDir}" -name ".DS_Store" -delete 2>/dev/null || true`, { stdio: "pipe" });
   const zipPath = path.join(releaseDir, `${bundleName}.zip`);
   execSync(`zip -r "${zipPath}" "${bundleName}"`, { cwd: releaseDir, stdio: "pipe" });
   console.log(`\n[✓] Successfully created release archive:`);

@@ -425,8 +425,8 @@ export class DownloadInterceptor {
     this.awaitingRefreshTimer = setTimeout(async () => {
       if (this.awaitingRefresh?.gid === gid) {
         const task = this.bindings.get(gid);
-        if (task && (task.state === "error" || task.state === "paused" || task.state === "aria2-active")) {
-          task.state = "error";
+        if (task && (task.state === "failed" || task.state === "paused" || task.state === "aria2-active")) {
+          task.state = "failed";
           task.errorMessage = "Refresh link capture timed out. Download marked as failed.";
           task.speed = 0;
           await this.saveBindings();
@@ -500,7 +500,7 @@ export class DownloadInterceptor {
         const msg = (err as Error).message;
         const existing = this.bindings.get(prompt.targetGid);
         if (existing) {
-          existing.state = "error";
+          existing.state = "failed";
           existing.errorMessage = `Refresh failed: ${msg}`;
           await this.saveBindings();
         }
@@ -728,7 +728,7 @@ export class DownloadInterceptor {
           const msg = (err as Error).message;
           const existing = this.bindings.get(target.gid);
           if (existing) {
-            existing.state = "error";
+            existing.state = "failed";
             existing.errorMessage = `Refresh failed: ${msg}`;
             await this.saveBindings();
           }
@@ -927,7 +927,7 @@ export class DownloadInterceptor {
         const msg = (err as Error).message;
         const existing = this.bindings.get(target.gid);
         if (existing) {
-          existing.state = "error";
+          existing.state = "failed";
           existing.errorMessage = `Refresh failed: ${msg}`;
           await this.saveBindings();
         }

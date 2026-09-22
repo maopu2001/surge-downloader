@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Surge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArwpESsSSB50QKqfVoaam+esG9OsubsPYX628tZ48ZrkuKUHiOC/7jM+V2qIpr4BhmVmNK8BoQ6fvdjGI/ly9aLVXN31uRnIjzaWsQo5sNAOvE6GLPsDDhptSYLzuu+4kwn1hLUerVkfFIL5+ENJo29QvXRkbRgdUzEUoKvOFYjeWSRLzCZHRiBTp5Nx6ary97h+9NhXAS7hniGav5Cn9MpN/IyaAdpKIQlKsJCYc+VFukTD7DQVY1pr34y41k5sdDJIDDdRUzSa1WDrUfLLaAyFoboUrWkj0dhW1qD6r1qThplV+ARr5KntrccGU+J0J1cA4PazCbhiBQlSs17qRXQIDAQAB",
   "description": "Surge — High-performance download manager powered by aria2c",
   "permissions": [
